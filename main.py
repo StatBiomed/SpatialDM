@@ -8,11 +8,12 @@ from utils import load_db, coarse_selection
 
 def get_args_parser():
     parser = argparse.ArgumentParser('TODO: Add description here', add_help=False)
-    parser.add_argument('--data', default="/Users/shoufachen/Documents/workspace/yoyo_nature/src", type=str, help="data location")
-    parser.add_argument('--output', default="/Users/shoufachen/Documents/workspace/yoyo_nature/output", type=str, help="output dir")
-    parser.add_argument('--sample', default="A1", type=str, help="sample")
-    parser.add_argument('--rbf_l', default=75, type=int, help="rbf parameter l TODO:")
-    parser.add_argument('--rbf_co', default=0.2, type=float, help="rbf parameter co TODO:")
+    parser.add_argument('--data', default=".", type=str, help="data location")
+    parser.add_argument('--output', default=".", type=str, help="output dir")
+    parser.add_argument('--sample', default="sample", type=str, help="sample")
+    parser.add_argument('--rbf_l', default=75, type=int, help="rbf parameter l: decide based on spot distance, \
+                                                              range of signanling, and spatial coords")
+    parser.add_argument('--rbf_co', default=0.2, type=float, help="rbf parameter cut-off: same as r")
     parser.add_argument('--single_cell', default=False, action='store_true', help="whether single cell or not")
     parser.add_argument('--select_num', default=2, type=int, help='selected number of data')
 
@@ -54,6 +55,7 @@ def main(result_dir, perm_dir, z_dir):
                                index_col=0)
     spatialcoods = spatialcoods.loc[spatialcoods[1] == 1, [4, 5]]  # TODO: purpose here
     spatialcoods.columns = ['x', 'y']
+    adata = adata.transpose()
     adata = adata.reindex(index=spatialcoods.index)
 
     # preprocessing
@@ -147,8 +149,10 @@ def local_result(result, perm_dir, result_dir):
 
 if __name__ == '__main__':
     args = get_args_parser()
-    print(args)
+    # print(args)
     result_dir, perm_dir, z_dir = create_output(args.output, args.sample)
+    # result_dir, perm_dir, z_dir = create_output('output', 'A1')
+
     # save settings
     with open(result_dir + "settings.txt", "w") as fh:
         msg_setting = f"rbf parameters: l={args.rbf_l} co={args.rbf_co}\n" \
