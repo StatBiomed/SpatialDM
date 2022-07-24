@@ -29,6 +29,8 @@ def weight_matrix_rbf(spatialcoods, l, min, single_cell):
           (spatialcoods.y.values.reshape(-1, 1) - spatialcoods.y.values) ** 2
     rbf_d = np.exp(-dis / (2 * l ** 2))  # RBF Distance
     rbf_d[rbf_d < min] = 0
+    rbf_d = rbf_d * spatialcoods.shape[0] / rbf_d.sum()
+
     if single_cell:
         np.fill_diagonal(rbf_d, 0)  # TODO: Optional
     else:
@@ -50,27 +52,27 @@ def create_output(output_dir, sample):
 
 
 def main(result_dir, perm_dir, z_dir):
-    adata = pd.read_csv(os.path.join(args.data, "{}.csv".format(args.sample)), header=0, index_col=0)
+    exp = pd.read_csv(os.path.join(args.data, "{}.csv".format(args.sample)), header=0, index_col=0)
     spatialcoods = pd.read_csv(os.path.join(args.data, '{}_tissue_positions_list.csv'.format(args.sample)), header=None,
                                index_col=0)
     spatialcoods = spatialcoods.loc[spatialcoods[1] == 1, [4, 5]]  # TODO: purpose here
     spatialcoods.columns = ['x', 'y']
-    adata = adata.transpose()
-    adata = adata.reindex(index=spatialcoods.index)
+    exp = exp.transpose()
+    exp = exp.reindex(index=spatialcoods.index)
 
     # preprocessing
     rbf_d = weight_matrix_rbf(spatialcoods, args.rbf_l, args.rbf_co, single_cell=args.single_cell)
-    ligand, receptor, ind = load_db(adata, 'human', min_cell=10, data_root=args.data)
+    ligand, receptor, ind = load_db(exp, 'human', min_cell=10, data_root=args.data)
 
     # TODO: why only select first 100 number
     ligand, receptor, ind = ligand[:args.select_num], receptor[:args.select_num], ind[:args.select_num]
 
-    # no_pairs, no_spots = len(ind), adata.shape[0]
-    num_pairs, num_spots = len(ind), adata.shape[0]
+    # no_pairs, no_spots = len(ind), exp.shape[0]
+    num_pairs, num_spots = len(ind), exp.shape[0]
     # s1, s2, EI, W, s4, s5 = Moran_var_constant(num_spots, rbf_d)
     rbf_d = rbf_d.astype(np.float16)
 
-    result = coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir, adata, ligand, receptor, args)
+    result = coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir, exp, ligand, receptor, args)
     if args.is_local:
         local_result(result, perm_dir, result_dir)
     else:
