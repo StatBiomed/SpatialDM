@@ -54,8 +54,8 @@ def feature_distance_matrix(j_vec, i_vec):
     return (i_vec.reshape(-1, 1) - j_vec.reshape(1, -1)) ** 2
 
 
-def permutation(rbf_d, adata, num_spots, PermTbl, ranges, len, c,
-                x, x_R, y, L, R, mean1, mean2,
+def permutation(rbf_d, adata, num_spots, PermTbl, ranges, len, 
+                x, y, L, R, mean1, mean2,
                 global_permI, local_permI, local_permI_R, geary_perm,
                 args,
                 ):
@@ -76,7 +76,8 @@ def permutation(rbf_d, adata, num_spots, PermTbl, ranges, len, c,
     value_R = value_R.mean(axis=1).values
     local_mat = np.matmul(rbf_d, value.reshape(len, num_spots).T).T * x
     local_mat_R = np.matmul(rbf_d, value_R.reshape(len, num_spots).T).T * x_R
-    global_permI[:, ranges] = local_mat.sum(axis=1) * c
+    global_permI[:, ranges] = local_mat.sum(axis=1) / \
+                      ((sum(x_sq) * sum(y_sq)) ** (1 / 2))
     if args.is_local:
         local_permI[:, ranges] = local_mat
         local_permI_R[:, ranges] = local_mat_R
@@ -94,18 +95,6 @@ def permutation(rbf_d, adata, num_spots, PermTbl, ranges, len, c,
         return global_permI
 
 
-def Moran_var_constant(no_spots, d):
-    """
-    TODO: briefly description the function of the function here:
-    """
-    s1 = ((d + d.T) ** 2).sum() / 2
-    s2 = sum((d.sum(axis=1) + d.sum(axis=0)) ** 2)
-    N = no_spots
-    EI = -1 / (N - 1)
-    W = d.sum()
-    s4 = (N ** 2 - 3 * N + 3) * s1 - N * s2 + 3 * W ** 2
-    s5 = (N ** 2 - N) * s1 - 2 * N * s2 + 6 * W ** 2
-    return s1, s2, EI, W, s4, s5
 
 
 def create_blank_perm(no_pairs, no_spots, n_perm, is_local=True):
@@ -137,9 +126,15 @@ def generate_perm_tbl(adata, n_perm, num_spots):
         perm[i] = mylist
     return perm
 
+def compute_var(N, rbf_d):
+    N = no_spots
+    nm = N**2 * (rbf_d*rbf_d.T).sum() \
+        - 2*N * (rbf_d.sum(1) * rbf_d.sum(0)).sum() \
+        + rbf_d.sum() **2
+    dm = N**2 * (N-1)**2
+    return(nm/dm)
 
 # data loading & creating dir for output
-# TO Yoyo: do not use variable names that don't have meaning. e.g, d, N, s1, s2, ...
 def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
                      adata, ligand, receptor, args):
     """only permute 100 times, select positive pairs p = 0.10
@@ -156,13 +151,19 @@ def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
     """
     # local variables (only live in this function scope)
     N = num_spots
-    s1, s2, EI, W, s4, s5 = Moran_var_constant(num_spots, rbf_d)
+    var = compute_var(N, rbf_d)
 
     pos = np.zeros((num_pairs, num_spots))
     constant, var, z, p = [], [], [], []
     local_I, global_I, geary_C = create_blank_constant(num_pairs, num_spots)
     Local_PermI, Global_PermI, Geary_Perm = create_blank_perm(num_pairs, num_spots, args.num_permutation)
     local_I_R, Local_PermI_R = local_I.copy(), Local_PermI.copy()
+
+    local_p = local_I.copy()
+    local_z = local_I.copy()
+   
+    wij_sq=(rbf_d**2).sum(1)
+
     for k in range(num_pairs):  #### BREAK DOWN !!
         L = ligand[k]
         R = receptor[k]
@@ -172,31 +173,47 @@ def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
             mean1, mean2 = 0, 0
         x = (adata.loc[:, L] - mean1).mean(axis=1).values
         y = (adata.loc[:, R] - mean2).mean(axis=1).values
-        if args.is_local:
-            x_R = (adata.loc[:, R] - mean1).mean(axis=1).values
-        else:
-            x_R = None  # not used
-        # x = np.where(x < 0, 0, x)  y = np.where(y < 0, 0, y)
         x_sq, y_sq = x ** 2, y ** 2
         constant.append(N / (W * (sum(x_sq) * sum(y_sq)) ** (1 / 2)))
         pos[k] = abs(adata.loc[:, L].mean(axis=1).values) / adata.loc[:, L].mean(axis=1).values + \
                  abs(adata.loc[:, R].mean(axis=1).values) / adata.loc[:, R].mean(axis=1).values
-
+        pos[k]=np.where(np.isnan(pos[k]),0,pos[k])
         LEN_div = int(args.num_permutation / args.nproc)
-        global_I[k] = np.matmul(np.matmul(rbf_d, y), x) * constant[-1]
-        if args.is_local:
-            s3 = N * sum(x_sq ** 2) ** (1 / 2) * sum(y_sq ** 2) ** (1 / 2) / (x_sq.sum() * y_sq.sum())
-            var.append(((N * s4 - s3 * s5) / ((N - 1) * (N - 2) * (N - 3) * W ** 2)) - EI ** 2)
-        else:
-            var.append(((N * s4) / ((N - 1) * (N - 2) * (N - 3) * W ** 2)) - EI ** 2)
-        z.append((global_I[k] - EI) / (var[-1] ** 1 / 2))
+        global_I[k] = np.matmul(np.matmul(rbf_d, y), x) / \
+                      ((sum(x_sq) * sum(y_sq)) ** (1 / 2))
+        z.append((global_I[k])/ (var ** (1 / 2)))
         p.append(stats.norm.sf(z[-1]))
 
         if args.is_local:
             local_I[k] = np.matmul(rbf_d, y) * x
+            local_I_R[k] = np.matmul(rbf_d, x) * y
+#             L=ligand[k]
+#             R=receptor[k]
+#             Lexp=exp.loc[L[0]].mean(0)
+#             Rexp=exp.loc[R[0]].mean(0)
+#             Lexp=Lexp-Lexp.mean()
+#             Rexp=Rexp-Rexp.mean()
 
-            local_I_R[k] = np.matmul(rbf_d, (adata.loc[:, L] - mean1).mean(axis=1).values) * \
-                           (adata.loc[:, R] - mean2).mean(axis=1).values
+            from scipy.stats import norm
+
+            mu1, std1 = norm.fit(x)#[(Lexp<Lexp.quantile(.95))])
+            mu2, std2 = norm.fit(y)#[Rexp<Rexp.quantile(.95)])
+            sigma1_sq=std1*N/(N-1)
+            sigma2_sq=std2*N/(N-1)
+    #         s1.append(sigma1_sq)
+    #         s2.append(sigma2_sq)
+    #     S1.append(pd.Series(s1).dropna().quantile(0.05))
+    #     S2.append(pd.Series(s2).dropna().quantile(0.05))
+    #         if (sigma1_sq<S1[k]) or np.isnan(sigma1_sq):
+    #             sigma1_sq=0.07#S1[k]
+    #         if (sigma2_sq<S2[k]) or np.isnan(sigma2_sq):
+    #             sigma2_sq=0.07#S2[k]
+
+            v, st =compute_var_I(sigma1_sq,sigma2_sq,wij_sq,n)
+           
+            local_z[i]=(local_I[i]+local_I_R[i])/st
+            local_p[i]=stats.norm.sf(local_z[i].astype(np.float64))
+            local_p[i]=np.where(pos[i]==0,1,local_p[i])    
 
             # geary_C[k] = ((feature_distance_matrix(x, x) + feature_distance_matrix(y, y)) * d).sum(axis=1) #TODO:
             pool = multiprocessing.Pool(processes=args.nproc)
@@ -209,7 +226,7 @@ def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
                 result.append(
                     pool.apply_async(permutation,
                                      (rbf_d, adata, num_spots, PermTbl, range(LEN_div), LEN_div, constant[-1],
-                                      x, x_R, y, L, R, mean1, mean2,
+                                      x, y, L, R, mean1, mean2,
                                       global_permI, local_permI, local_permI_R, geary_perm,
                                       args), callback=show_progress))
             pool.close()
@@ -224,11 +241,13 @@ def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
             value = value.mean(axis=1).values  # mean along row, e.g. ['Tgfbr1' 'Tgfbr2'], --> numpy
             #  value = np.where(value < 0, 0, value)
             local_mat = np.matmul(rbf_d, value.reshape(args.num_permutation, num_spots).T).T * x
-            Global_PermI[k] = local_mat.sum(axis=1) * constant[-1]
+            Global_PermI[k] = local_mat.sum(axis=1) / \
+                      ((sum(x_sq) * sum(y_sq)) ** (1 / 2))
         print(str(k) + 'pair coarse selection finished in :')
 
     pd.DataFrame({'var': var, 'z': z, 'pval': p}, index=ind).to_csv(z_dir + '/z_res.csv')
     if args.is_local:
-        return global_I, Global_PermI.transpose(), pos, constant, local_I, local_I_R, geary_C, Local_PermI, Local_PermI_R, Geary_Perm
+        return global_I, Global_PermI.transpose(), pos, constant, local_I, local_I_R, geary_C,
+            Local_PermI, Local_PermI_R, Geary_Perm,local_z,local_p
     else:
         return global_I, Global_PermI.transpose()
