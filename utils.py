@@ -13,7 +13,7 @@ def show_progress(RV):
     return RV
 
 # load database
-def load_db(adata, species, min_cell, data_root):
+def load_db(exp, species, min_cell, data_root):
     if species == 'mouse':
         geneInter = pd.read_csv(os.path.join(data_root, '0_CellChatDB', 'interaction_input_CellChatDB.csv'),
                                 index_col=0)
@@ -31,12 +31,12 @@ def load_db(adata, species, min_cell, data_root):
         for n in [ligand, receptor]:
             l = n[i]
             if l in comp.index:
-                n[i] = comp.loc[l].dropna().values[pd.Series(comp.loc[l].dropna().values).isin(adata.columns)]
+                n[i] = comp.loc[l].dropna().values[pd.Series(comp.loc[l].dropna().values).isin(exp.columns)]
             else:
-                n[i] = pd.Series(l).values[pd.Series(l).isin(adata.columns)]
+                n[i] = pd.Series(l).values[pd.Series(l).isin(exp.columns)]
         if (len(ligand[i]) > 0) * (len(receptor[i]) > 0):
-            if (sum(adata.loc[:, ligand[i]].mean(axis=1) > 0) >= min_cell) * \
-                    (sum(adata.loc[:, ligand[i]].mean(axis=1) > 0) >= min_cell):
+            if (sum(exp.loc[:, ligand[i]].mean(axis=1) > 0) >= min_cell) * \
+                    (sum(exp.loc[:, ligand[i]].mean(axis=1) > 0) >= min_cell):
                 t.append(True)
             else:
                 t.append(False)
@@ -54,7 +54,7 @@ def feature_distance_matrix(j_vec, i_vec):
     return (i_vec.reshape(-1, 1) - j_vec.reshape(1, -1)) ** 2
 
 
-def permutation(rbf_d, adata, num_spots, PermTbl, ranges, len, 
+def permutation(rbf_d, exp, num_spots, PermTbl, ranges, len, 
                 x, y, L, R, mean1, mean2,
                 global_permI, local_permI, local_permI_R, geary_perm,
                 args,
@@ -62,7 +62,7 @@ def permutation(rbf_d, adata, num_spots, PermTbl, ranges, len,
     """only permute 100 times, select positive pairs p = 0.10
     Arguments:
         rbf_d (?):
-        adata (?):
+        exp (?):
         num_spots (int):
         ligand (?):
         receptor (?):
@@ -70,9 +70,9 @@ def permutation(rbf_d, adata, num_spots, PermTbl, ranges, len,
         and returns the loss.
     """
     idx_row = PermTbl.reshape(-1, 1)[:, 0]
-    value = adata.loc[idx_row, R] - mean2
+    value = exp.loc[idx_row, R] - mean2
     value = value.mean(axis=1).values  # mean along row, e.g. ['Tgfbr1' 'Tgfbr2'], --> numpy
-    value_R = adata.loc[idx_row, L] - mean1
+    value_R = exp.loc[idx_row, L] - mean1
     value_R = value_R.mean(axis=1).values
     local_mat = np.matmul(rbf_d, value.reshape(len, num_spots).T).T * x
     local_mat_R = np.matmul(rbf_d, value_R.reshape(len, num_spots).T).T * x_R
@@ -81,9 +81,9 @@ def permutation(rbf_d, adata, num_spots, PermTbl, ranges, len,
     if args.is_local:
         local_permI[:, ranges] = local_mat
         local_permI_R[:, ranges] = local_mat_R
-        feat_dist_l = feature_distance_matrix((adata.loc[idx_row, L] - mean1).mean(axis=1).values.astype(np.float16),
+        feat_dist_l = feature_distance_matrix((exp.loc[idx_row, L] - mean1).mean(axis=1).values.astype(np.float16),
                                               x.astype(np.float16))
-        feat_dist_r = feature_distance_matrix((adata.loc[idx_row, R] - mean2).mean(axis=1).values.astype(np.float16),
+        feat_dist_r = feature_distance_matrix((exp.loc[idx_row, R] - mean2).mean(axis=1).values.astype(np.float16),
                                               y.astype(np.float16))
         feat_dist = feat_dist_l + feat_dist_r
         feat_dist2 = feat_dist.reshape(num_spots, len, num_spots) * np.expand_dims(rbf_d, 1)
@@ -116,11 +116,11 @@ def create_blank_constant(no_pairs, no_spots):
     return [local_I, global_I, geary_C]
 
 
-def generate_perm_tbl(adata, n_perm, num_spots):
+def generate_perm_tbl(exp, n_perm, num_spots):
     """shuffle neighbors for n_perm times by shuffling spot lables"""
     perm = np.zeros((n_perm, num_spots))
-    perm = perm.astype(type(adata.index.values[0]))  # drosophila is indexed by int
-    mylist = list(adata.index)
+    perm = perm.astype(type(exp.index.values[0]))  # drosophila is indexed by int
+    mylist = list(exp.index)
     for i in range(n_perm):
         random.shuffle(mylist)
         perm[i] = mylist
@@ -136,14 +136,14 @@ def compute_var(N, rbf_d):
 
 # data loading & creating dir for output
 def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
-                     adata, ligand, receptor, args):
+                     exp, ligand, receptor, args):
     """only permute 100 times, select positive pairs p = 0.10
     Arguments:
         num_pairs (int):
         num_spots (int):
         ind ():
         z_dir (str): path
-        adata (?):
+        exp (?):
         ligand (?):
         receptor (?):
         closure (callable, optional): A closure that reevaluates the model
@@ -168,15 +168,15 @@ def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
         L = ligand[k]
         R = receptor[k]
         if args.dmean:
-            mean1, mean2 = adata.loc[:, L].mean().mean(), adata.loc[:, R].mean().mean()
+            mean1, mean2 = exp.loc[:, L].mean().mean(), exp.loc[:, R].mean().mean()
         else:
             mean1, mean2 = 0, 0
-        x = (adata.loc[:, L] - mean1).mean(axis=1).values
-        y = (adata.loc[:, R] - mean2).mean(axis=1).values
+        x = (exp.loc[:, L] - mean1).mean(axis=1).values
+        y = (exp.loc[:, R] - mean2).mean(axis=1).values
         x_sq, y_sq = x ** 2, y ** 2
         constant.append(N / (W * (sum(x_sq) * sum(y_sq)) ** (1 / 2)))
-        pos[k] = abs(adata.loc[:, L].mean(axis=1).values) / adata.loc[:, L].mean(axis=1).values + \
-                 abs(adata.loc[:, R].mean(axis=1).values) / adata.loc[:, R].mean(axis=1).values
+        pos[k] = abs(exp.loc[:, L].mean(axis=1).values) / exp.loc[:, L].mean(axis=1).values + \
+                 abs(exp.loc[:, R].mean(axis=1).values) / exp.loc[:, R].mean(axis=1).values
         pos[k]=np.where(np.isnan(pos[k]),0,pos[k])
         LEN_div = int(args.num_permutation / args.nproc)
         global_I[k] = np.matmul(np.matmul(rbf_d, y), x) / \
@@ -221,11 +221,11 @@ def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
             for ii in range(args.nproc):
                 local_permI, global_permI, geary_perm = create_blank_perm(1, num_spots, LEN_div, args.is_local)
                 local_permI_R = local_permI.copy()
-                PermTbl = generate_perm_tbl(adata, LEN_div, num_spots)
+                PermTbl = generate_perm_tbl(exp, LEN_div, num_spots)
                 # global_permI[k] = (np.matmul(d, value.reshape(LEN_div, no_spots).T).T * x).sum(axis=1) * constant[-1]
                 result.append(
                     pool.apply_async(permutation,
-                                     (rbf_d, adata, num_spots, PermTbl, range(LEN_div), LEN_div, constant[-1],
+                                     (rbf_d, exp, num_spots, PermTbl, range(LEN_div), LEN_div, constant[-1],
                                       x, y, L, R, mean1, mean2,
                                       global_permI, local_permI, local_permI_R, geary_perm,
                                       args), callback=show_progress))
@@ -235,9 +235,9 @@ def coarse_selection(num_pairs, num_spots, rbf_d, ind, z_dir,
             Global_PermI[k], Local_PermI[k], Local_PermI_R[k], Geary_Perm[k] = [
                 np.hstack([result[ii][nth_df] for ii in range(args.nproc)]) for nth_df in range(4)]
         else:  # TODO: mp split
-            PermTbl = generate_perm_tbl(adata, args.num_permutation, num_spots)
+            PermTbl = generate_perm_tbl(exp, args.num_permutation, num_spots)
             idx_row = PermTbl.reshape(-1, 1)[:, 0]
-            value = adata.loc[idx_row, R] - mean2
+            value = exp.loc[idx_row, R] - mean2
             value = value.mean(axis=1).values  # mean along row, e.g. ['Tgfbr1' 'Tgfbr2'], --> numpy
             #  value = np.where(value < 0, 0, value)
             local_mat = np.matmul(rbf_d, value.reshape(args.num_permutation, num_spots).T).T * x
