@@ -42,7 +42,8 @@ class SpatialDM(object):
         """
         dis = (self.spatialcoord.x.values.reshape(-1, 1) - self.spatialcoord.x.values) ** 2 + \
               (self.spatialcoord.y.values.reshape(-1, 1) - self.spatialcoord.y.values) ** 2
-        rbf_d = np.exp(-dis / (2 * l ** 2))  # RBF Distance
+                                                                                        
+        rbf_d = np.exp(-dis / (2 * l ** 2))  # RBF Distance                                
         if rbf_d.shape[0] > 1000:
             rbf_d = rbf_d.astype(np.float16)
         if cutoff:
@@ -57,6 +58,25 @@ class SpatialDM(object):
             np.fill_diagonal(rbf_d, 0)
         else:
             pass
+        
+        #from scipy.sparse import csc_matrix
+        #from scipy.sparse import lil_matrix
+        #from scipy.sparse.linalg import expm
+        #diss = csc_matrix(dis)
+        #rbf_d = expm(-dis / (2 * l ** 2))
+        #if rbf_d.shape[0] > 1000:
+        #   rbf_d = rbf_d.astype(np.float16)
+        #if cutoff:
+        #    rbf_d = rbf_d > cutoff
+        #elif n_neighbors:
+        #    problem!
+        #self.rbf_d = rbf_d * self.N / rbf_d.sum()
+        #if single_cell:
+        #    rbf_d = lil_matrix(rbf_d)
+        #    rbf_d.setdiag(0)
+        #    rbf_d = csc_matrix(rbf_d)
+        #else:
+        #    pass
 
         return #rbf_d
 
@@ -209,8 +229,8 @@ class SpatialDM(object):
         if method in ['z-score', 'both']:
             self.local_v, self.local_st = np.zeros(total_len), np.zeros(total_len)
             self.local_z, self.local_z_p = np.zeros((total_len, self.N)), np.zeros((total_len, self.N))
-            wij_sq = (self.rbf_d ** 2).sum(1)
-
+            wij_sq = (self.rbf_d ** 2).sum(1)           #wij_sq = (self.rbf_d.power(2)).sum(1)
+           
         if method in ['both', 'permutation']:
             LEN_div = int(n_perm / nproc)
             self.local_permI = np.zeros((total_len, n_perm, self.N),
