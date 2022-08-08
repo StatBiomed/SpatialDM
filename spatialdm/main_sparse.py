@@ -48,8 +48,6 @@ class SpatialDM(object):
 
         diss = csc_matrix(dis)
         rbf_d = expm(-diss / (2 * l ** 2))
-        if rbf_d.shape[0] > 1000:
-           rbf_d = rbf_d.astype(np.float16)
         if cutoff:
             rbf_d = rbf_d > cutoff
         self.rbf_d = rbf_d * self.N / rbf_d.sum()
