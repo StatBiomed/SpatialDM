@@ -88,9 +88,9 @@ def permutation(sample, LEN_div, ii,
     value_R = sample.exp.loc[idx_row, L] - mean1
     value_R = value_R.mean(axis=1).values
     sample.local_permI[:, (LEN_div * ii):(LEN_div * (ii + 1)), :] = \
-        sample.rbf_d.multiply(value.reshape(-1, sample.N).T).T * x
+        sample.rbf_d.dot(value.reshape(-1, sample.N).T).T * x
     sample.local_permI_R[:, (LEN_div * ii):(LEN_div * (ii + 1)), :] = \
-        sample.rbf_d.multiply(value_R.reshape(-1, sample.N).T).T * y
+        sample.rbf_d.dot(value_R.reshape(-1, sample.N).T).T * y
     return
 
     # feat_dist_l = feature_distance_matrix((exp.loc[idx_row, L] - mean1).mean(axis=1).values.astype(np.float16),
@@ -325,7 +325,7 @@ def pair_selection(sample, n_perm, sel_ind, method):
         x_sq, y_sq = x ** 2, y ** 2
 
         # LEN_div = int(args.num_permutation / args.nproc)
-        sample.global_I[k] = np.matmul(sample.rbf_d.multiply(y), x) / \
+        sample.global_I[k] = np.matmul(sample.rbf_d.dot(y), x) / \
                       ((sum(x_sq) * sum(y_sq)) ** (1 / 2))
         if method in ['both', 'z-score']:
             sample.z[k] = sample.global_I[k] / sample.st
@@ -336,7 +336,7 @@ def pair_selection(sample, n_perm, sel_ind, method):
             value = exp.loc[idx_row, R] - mean2
             value = value.mean(axis=1).values  # mean along row, e.g. ['Tgfbr1' 'Tgfbr2'], --> numpy
             #  value = np.where(value < 0, 0, value)
-            local_mat = sample.rbf_d.multiply(value.reshape(n_perm, sample.N).T).T * x
+            local_mat = sample.rbf_d.dot(value.reshape(n_perm, sample.N).T).T * x
             sample.global_perm[k] = local_mat.sum(axis=1) / \
                               ((sum(x_sq) * sum(y_sq)) ** (1 / 2))
         print(str(k) + 'pairs global selection finished in: ' + str(time.time()-start))
