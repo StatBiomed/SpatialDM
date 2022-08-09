@@ -11,7 +11,7 @@ from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import expm
 import matplotlib.pyplot as plt
 import json
-from utils_sparse import *
+from .utils_sparse import *
 
 class SpatialDM(object):
     """ 
