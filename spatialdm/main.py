@@ -42,16 +42,9 @@ class SpatialDM(object):
         :param single_cell: if single cell resolution, diagonal will be made 0.
         :return: rbf_d weight matrix in obj attribute
         """
-<<<<<<< HEAD
         pdist = spatial.distance.pdist(self.spatialcoord.values, 'sqeuclidean')
         pdist = spatial.distance.squareform(pdist)
         rbf_d = np.exp(-pdist / (2 * l ** 2))  # RBF Distance
-=======
-        dis = (self.spatialcoord.x.values.reshape(-1, 1) - self.spatialcoord.x.values) ** 2 + \
-              (self.spatialcoord.y.values.reshape(-1, 1) - self.spatialcoord.y.values) ** 2
-                                                                                        
-        rbf_d = np.exp(-dis / (2 * l ** 2))  # RBF Distance                                
->>>>>>> 9ee58d14594057a2347c41a5f2dc31eae9ffca8c
         if rbf_d.shape[0] > 1000:
             rbf_d = rbf_d.astype(np.float16)
         if cutoff:
@@ -66,25 +59,6 @@ class SpatialDM(object):
             np.fill_diagonal(self.rbf_d, 0)
         else:
             pass
-        
-        #from scipy.sparse import csc_matrix
-        #from scipy.sparse import lil_matrix
-        #from scipy.sparse.linalg import expm
-        #diss = csc_matrix(dis)
-        #rbf_d = expm(-dis / (2 * l ** 2))
-        #if rbf_d.shape[0] > 1000:
-        #   rbf_d = rbf_d.astype(np.float16)
-        #if cutoff:
-        #    rbf_d = rbf_d > cutoff
-        #elif n_neighbors:
-        #    problem!
-        #self.rbf_d = rbf_d * self.N / rbf_d.sum()
-        #if single_cell:
-        #    rbf_d = lil_matrix(rbf_d)
-        #    rbf_d.setdiag(0)
-        #    rbf_d = csc_matrix(rbf_d)
-        #else:
-        #    pass
 
         # self.rbf_d = csc_matrix(self.rbf_d)
 
@@ -238,8 +212,8 @@ class SpatialDM(object):
 
         if method in ['z-score', 'both']:
             self.local_z, self.local_z_p = np.zeros((total_len, self.N)), np.zeros((total_len, self.N))
-            wij_sq = (self.rbf_d ** 2).sum(1)           #wij_sq = (self.rbf_d.power(2)).sum(1)
-           
+            wij_sq = (self.rbf_d ** 2).sum(1)
+
         if method in ['both', 'permutation']:
             LEN_div = int(n_perm / nproc)
             self.local_permI = np.zeros((total_len, n_perm, self.N),
@@ -391,109 +365,4 @@ def compute_pathway(sample, ls=None, path_name=None, dic=None):
         perc = cts / \
                sample.geneInter.loc[:, 'pathway_name'].value_counts()
         sample.__dict__['path_summary'][path_name]['perc'] = perc.dropna()
-<<<<<<< HEAD
-=======
 
-# # def plot_pairs(self, pairs_to_plot, pdf=None, figsize=(35, 5), markersize=18,
-#     #                cmap='Green', cmap_l='coolwarm', cmap_r='coolwarm'):
-#     #     """
-#     #     plot selected spots as well as LR expression.
-#     #     :param pairs_to_plot: pair name(s), should be from spatialdm_local pairs .
-#     #     :param pdf: pdf file prefix. save plots in a pdf file.
-#     #     :param figsize: figsize for each pair. Default to (35, 5).
-#     #     :param markersize: markersize for each spot. Default
-#     #     :param cmap: cmap for selected local spots.
-#     #     :param cmap_l: cmap for selected ligand.
-#     #     :param cmap_r: cmap for selected receptor.
-#     #     :return:
-#     #     """
-#     #     if self.local_method == 'z-score':
-#     #         selected_ind = self.local_z_p.index
-#     #         spots = 1- self.local_z_p
-#     #     if self.local_method == 'permutation':
-#     #         selected_ind = self.local_perm_p.index
-#     #         spots = 1- self.local_perm_p
-#     #     if pdf != None:
-#     #         with PdfPages(pdf + '.pdf') as pdf:
-#     #             for pair in pairs_to_plot:
-#     #                 plot_selected_pair(self, pair, spots, selected_ind, figsize, markersize, cmap=cmap,
-#     #                                    cmap_l=cmap_l, cmap_r=cmap_r)
-#     #                 pdf.savefig()
-#     #                 plt.show()
-#     #                 plt.close()
-#     #
-#     #     else:
-#     #         for pair in pairs_to_plot:
-#     #             plot_selected_pair(self, pair, spots, selected_ind, figsize, markersize, cmap=cmap,
-#     #                                cmap_l=cmap_l, cmap_r=cmap_r)
-#     #             plt.show()
-#     #             plt.close()
-#
-#     def global_result(result, ind, perm_dir):
-#         type(my_sample.spatialcoord) == pd.core.frame.DataFrame
-#         global_I, Global_PermI = result
-#
-#         p = 1 - (global_I > Global_PermI).sum(0) / 1000
-#         pairs = ind[p < 0.05]
-#         selected = (p < 0.05)
-#
-#         checkpoint = dict(global_I=global_I, Global_PermI=Global_PermI, p=p,
-#                           pairs=pairs, selected=selected)
-#
-#         for k, v in checkpoint.items():
-#             np.save(perm_dir + '/{}.npy'.format(k), np.array(v, dtype=object))
-#             print('Successfully save perm_dir/{} ...'.format(k))
-#
-#
-#     def local_result(result, perm_dir, result_dir):
-#         global_I, Global_PermI, pos, constant, local_I, local_I_R, geary_C, Local_PermI, Local_PermI_R, Geary_Perm = result
-#         Geary_spots = np.sum((np.expand_dims(geary_C, 1) < Geary_Perm), axis=1)
-#         Moran_spots = np.sum((np.expand_dims(local_I, 1) > Local_PermI), axis=1)
-#         Moran_spots_R = np.sum((np.expand_dims(local_I_R, 1) > Local_PermI_R), axis=1)
-#
-#         Geary_spots = Geary_spots * pos / 2
-#         Geary_spots[Geary_spots < 900] = 0
-#         Geary_spots = Geary_spots.astype(float)
-#         Geary_spots = np.where(np.isnan(Geary_spots), 0, Geary_spots)
-#         no_Geary_spots = (Geary_spots > 0).sum(axis=1)
-#
-#         Moran_spots = Moran_spots * pos / 2
-#         Moran_spots[Moran_spots < 900] = 0
-#         Moran_spots = Moran_spots.astype(float)
-#         Moran_spots = np.where(np.isnan(Moran_spots), 0, Moran_spots)
-#         no_Moran_spots = (Moran_spots > 0).sum(axis=1)
-#
-#         Moran_spots_R = Moran_spots_R * pos / 2
-#         Moran_spots_R[Moran_spots_R < 900] = 0
-#         Moran_spots_R = Moran_spots_R.astype(float)
-#         Moran_spots_R = np.where(np.isnan(Moran_spots_R), 0, Moran_spots_R)
-#         no_Moran_spots_R = (Moran_spots_R > 0).sum(axis=1)
-#
-#         checkpoint = dict(
-#             global_I=global_I,
-#             Global_PermI=Global_PermI,
-#             pos=pos,
-#             constant=constant,
-#             local_I=local_I,
-#             local_I_R=local_I_R,
-#             geary_C=geary_C,
-#             Local_PermI=Local_PermI,
-#             Local_PermI_R=Local_PermI_R,
-#             Geary_Perm=Geary_Perm,
-#         )
-#         for k, v in checkpoint.items():
-#             np.save(perm_dir + '/{}.npy'.format(k), np.array(v, dtype=object))
-#             print('Successfully save perm_dir/{} ...'.format(k))
-#
-#         checkpoint = dict(
-#             Geary_spots=Geary_spots,
-#             Moran_spots=Moran_spots,
-#             Moran_spots_R=Moran_spots_R,
-#             no_Geary_spots=no_Geary_spots,
-#             no_Moran_spots=no_Moran_spots,
-#             no_Moran_spots_R=no_Moran_spots_R
-#         )
-#         for k, v in checkpoint.items():
-#             np.save(result_dir + '/{}.npy'.format(k), np.array(v, dtype=object))
-#             print('Successfully save result_dir/{} ...'.format(k))
->>>>>>> 9ee58d14594057a2347c41a5f2dc31eae9ffca8c
