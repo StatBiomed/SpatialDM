@@ -11,7 +11,7 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 import json
 from scipy.sparse import csc_matrix
-from utils import *
+from .utils import *
 
 class SpatialDM(object):
     """ 
