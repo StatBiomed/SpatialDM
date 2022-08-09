@@ -1,10 +1,16 @@
 import pandas as pd
 import numpy as np
 from statsmodels.stats.multitest import fdrcorrection
-import matplotlib.pyplot as plt
 import os
 
 def concat_db(samples, species, dir_db):
+    """
+    Merge all interaction database from a list of spatialdm obj.
+    :param samples: a list of spatialdm obj to be merged.
+    :param species: str. 'human' or 'mouse'.
+    :param dir_db: dir of 0_CellChatDB folder.
+    :return:
+    """
     if species == 'mouse':
         geneInter = pd.read_csv(os.path.join(dir_db, '0_CellChatDB',
                                              species, 'interaction_input_CellChatDB.csv'),
@@ -24,7 +30,15 @@ def concat_db(samples, species, dir_db):
 
 class concat_obj(object):
     def __init__(self, samples, names, species, dir_db, method='z-score', fdr=False):
-        #     def concat_samples_from_zscore(samples, fdr=True):
+        """
+        Merge all global results from a list of spatialdm obj
+        :param samples: a list of spatialdm obj to be merged.
+        :param names: a list of str for each sample's name.
+        :param species: str. 'human' or 'mouse'.
+        :param dir_db: dir containing 0_CellChatDB folder.
+        :param method: 'z-score' or 'permutation'. Should be the commonly selected method from all samples.
+        :param fdr: If use fdr or p-values for differential analysis
+        """
         self.db, self.geneInter = concat_db(samples, species, dir_db)
         self.n_samples = len(samples)
         self.method = method
@@ -60,8 +74,13 @@ class concat_obj(object):
         return
 
     def differential_test(self, subset, conditions):
+        """
+        Test whether each pair is differential among 2 or more conditions
+        :param subset: list of concat_obj names to perform differential test on.
+        :param conditions:
+        :return:
+        """
         if self.method == 'z-score':
-            from sklearn.linear_model import LinearRegression
             import statsmodels.api as sm
             import scipy
             self.subset = subset
@@ -97,43 +116,31 @@ class concat_obj(object):
 
             self.diff_fdr = fdrcorrection(self.p_val)[1]
 
+    def group_differential_pairs(self, c1_name, c2_name, diff_quantile1=0.7, diff_quantile2=0.3, fdr_co=0.1):
+        _range = np.arange(1, self.n_sub)
+        self.q1 = np.quantile(self.diff, diff_quantile1)
+        self.q2 = np.quantile(self.diff, diff_quantile2)
+        self.fdr_co = fdr_co
+        fdr = self.diff_fdr
+        tf_df = self.tf_df
+        diff = self.diff
 
-def volcano(self, pairs=None, legend=None, xmax = 25, xmin = -20):
-    q1 = self.q1
-    q2 = self.q2
-    fdr_co = self.fdr_co
-    color_codes = [(0.4980392156862745, 0.788235294117647, 0.4980392156862745, 1.0),
-                 (0.7450980392156863, 0.6823529411764706, 0.8313725490196079, 1.0),
-                 (0.9921568627450981, 0.7529411764705882, 0.5254901960784314, 1.0),
-                 (1.0, 1.0, 0.6, 1.0),
-                 (0.2196078431372549, 0.4235294117647059, 0.6901960784313725, 1.0),
-                 (0.9411764705882353, 0.00784313725490196, 0.4980392156862745, 1.0),
-                 (0.7490196078431373, 0.3568627450980392, 0.09019607843137253, 1.0),
-                 (0.4, 0.4, 0.4, 1.0)]
+        c1_only = tf_df.loc[(tf_df.loc[:, np.array(self.subset)[self.conditions == 1]].sum(1) == \
+                             (self.conditions == 1).sum()) & \
+                            (tf_df.loc[:, np.array(self.subset)[self.conditions == 0]].sum(1) == 0)].index
 
-    _range = np.arange(1, self.n_sub)
-    diff_cp = self.diff.copy()
-    diff_cp = np.where((diff_cp>xmax), xmax, diff_cp)
-    diff_cp = np.where((diff_cp<xmin), xmin, diff_cp)
+        c2_only = tf_df.loc[(tf_df.loc[:, np.array(self.subset)[self.conditions == 1]].sum(1) == 0) & \
+                            (tf_df.loc[:, np.array(self.subset)[self.conditions == 0]].sum(1) == \
+                             (self.conditions == 0).sum())].index
 
-    plt.scatter(diff_cp[self.tf_df.sum(1).isin(_range)],
-                -np.log10(self.diff_fdr)[self.tf_df.sum(1).isin(_range)], s=10, c='grey')
-    plt.xlabel('adult z - fetus z')
-    plt.ylabel('diff_cperential fdr (log-likelihood, -log10)')
-    plt.xlim([xmin-1,xmax+1])
+        c1_specific = np.hstack((c1_only, diff[(diff > self.q1) & (fdr < fdr_co) & \
+                                               (tf_df.sum(1).isin(_range))].index))
 
-    plt.scatter(diff_cp[(diff_cp>q1) & (self.diff_fdr<fdr_co) & \
-                           (self.tf_df.sum(1).isin(_range))],
-                -np.log10(self.diff_fdr)[(diff_cp>q1) & (self.diff_fdr<fdr_co) & \
-                           (self.tf_df.sum(1).isin(_range))], s=10,c='tab:orange')
-    plt.scatter(diff_cp[(diff_cp<q2) & (self.diff_fdr<fdr_co) & \
-                           (self.tf_df.sum(1).isin(_range))],
-                -np.log10(self.diff_fdr)[(diff_cp<q2) & (self.diff_fdr<fdr_co)& \
-                           (self.tf_df.sum(1).isin(_range))], s=10,c='tab:green')
-    if pairs!=None:
-        for i,pair in enumerate(pairs):
-            plt.scatter(diff_cp[self.p_df.index==pair],
-                        -np.log10(self.diff_fdr)[self.p_df.index==pair], c=color_codes[i])
-    plt.legend(np.hstack(([''], legend, pairs)))
+        self.__dict__[c1_name + '_specific'] = pd.Series(c1_specific).drop_duplicates()
+        c2_specific = np.hstack((c2_only, diff[(diff < self.q2) & (fdr < fdr_co) & \
+                                               ((tf_df.sum(1).isin(_range)))].index))
+        self.__dict__[c2_name + '_specific'] = pd.Series(c2_specific).drop_duplicates()
+        self.__dict__[c1_name + '_only'] = c1_only
+        self.__dict__[c2_name + '_only'] = c2_only
 
-# plt.savefig('fdr/enrich_volcano.pdf')    # updated
+

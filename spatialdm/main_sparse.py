@@ -4,14 +4,14 @@ import time
 
 import pandas as pd
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
 from statsmodels.stats.multitest import fdrcorrection
-from scipy import spatial
 from scipy.stats import norm
+from scipy.sparse import csc_matrix
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import expm
 import matplotlib.pyplot as plt
 import json
-from scipy.sparse import csc_matrix
-from utils import *
+from utils_sparse import *
 
 class SpatialDM(object):
     """ 
@@ -28,8 +28,8 @@ class SpatialDM(object):
         self.spatialcoord = spatialcoord
         self.N = spatialcoord.shape[0]
         self.exp = self.exp.reindex(index=self.spatialcoord.index)
-
-    def weight_matrix(self, l, cutoff=None, n_neighbors=None, single_cell=False):
+    
+    def weight_matrix(self, l, cutoff=None, single_cell=False):
         """
         compute weight matrix based on radial basis kernel. 
         cutoff & n_neighbors are two alternative options to \
@@ -42,53 +42,23 @@ class SpatialDM(object):
         :param single_cell: if single cell resolution, diagonal will be made 0.
         :return: rbf_d weight matrix in obj attribute
         """
-<<<<<<< HEAD
-        pdist = spatial.distance.pdist(self.spatialcoord.values, 'sqeuclidean')
-        pdist = spatial.distance.squareform(pdist)
-        rbf_d = np.exp(-pdist / (2 * l ** 2))  # RBF Distance
-=======
         dis = (self.spatialcoord.x.values.reshape(-1, 1) - self.spatialcoord.x.values) ** 2 + \
               (self.spatialcoord.y.values.reshape(-1, 1) - self.spatialcoord.y.values) ** 2
-                                                                                        
-        rbf_d = np.exp(-dis / (2 * l ** 2))  # RBF Distance                                
->>>>>>> 9ee58d14594057a2347c41a5f2dc31eae9ffca8c
-        if rbf_d.shape[0] > 1000:
-            rbf_d = rbf_d.astype(np.float16)
-        if cutoff:
-            rbf_d[rbf_d < cutoff] = 0
-        elif n_neighbors:
-            nbrs = NearestNeighbors(n_neighbors, algorithm='ball_tree').fit(rbf_d)
-            knn = nbrs.kneighbors_graph(rbf_d).toarray()
-            rbf_d = rbf_d * knn
-        self.rbf_d = rbf_d * self.N / rbf_d.sum()
+   
 
+        diss = csc_matrix(dis)
+        rbf_d = expm(-diss / (2 * l ** 2))
+        if cutoff:
+            rbf_d = rbf_d > cutoff
+        self.rbf_d = rbf_d * self.N / rbf_d.sum()
         if single_cell:
-            np.fill_diagonal(self.rbf_d, 0)
+            rbf_d = lil_matrix(rbf_d)
+            rbf_d.setdiag(0)
+            rbf_d = csc_matrix(rbf_d)
         else:
             pass
-        
-        #from scipy.sparse import csc_matrix
-        #from scipy.sparse import lil_matrix
-        #from scipy.sparse.linalg import expm
-        #diss = csc_matrix(dis)
-        #rbf_d = expm(-dis / (2 * l ** 2))
-        #if rbf_d.shape[0] > 1000:
-        #   rbf_d = rbf_d.astype(np.float16)
-        #if cutoff:
-        #    rbf_d = rbf_d > cutoff
-        #elif n_neighbors:
-        #    problem!
-        #self.rbf_d = rbf_d * self.N / rbf_d.sum()
-        #if single_cell:
-        #    rbf_d = lil_matrix(rbf_d)
-        #    rbf_d.setdiag(0)
-        #    rbf_d = csc_matrix(rbf_d)
-        #else:
-        #    pass
 
-        # self.rbf_d = csc_matrix(self.rbf_d)
-
-        return
+        return rbf_d
 
     def extract_lr(self, species, dir_db, min_cell=0):
         """
@@ -158,8 +128,6 @@ class SpatialDM(object):
         self.ind = self.ind[select_num]
         self.global_res = pd.DataFrame({'ligand': self.ligand,
                                  'receptor': self.receptor}, index=self.ind)
-        self.global_I = np.zeros(total_len)
-
         if method in ['z-score', 'both']:
             self.v = var_compute(self)
             self.st = self.v ** (1 / 2)
@@ -169,8 +137,8 @@ class SpatialDM(object):
 
         if not (method in ['both', 'z-score', 'permutation']):
             raise ValueError("Only one of ['z-score', 'both', 'permutation'] is supported")
-
-        LEN_div = int(len(select_num) / nproc)  # multiprocessing split by pairs
+        self.global_I = np.zeros(total_len)
+        LEN_div = int(len(select_num) / nproc)
         pool = multiprocessing.Pool(processes=nproc)
         for ii in range(nproc):
 
@@ -181,6 +149,8 @@ class SpatialDM(object):
         pool = multiprocessing.Pool(processes=nproc)
         if (len(select_num) % nproc) > 0:
             sel_ind = select_num[-(len(select_num) % nproc):]
+            print('sel_ind')
+            print(sel_ind)
             pool.apply_async(pair_selection(self, n_perm, sel_ind, method))
         pool.close()
         pool.join()
@@ -228,17 +198,18 @@ class SpatialDM(object):
         if type(select_num) == type(None):
             select_num = np.arange(len(self.ind))[self.global_res['selected']] # default to global selected pairs
         total_len = len(select_num)
-        ligand = self.ligand[select_num]
-        receptor = self.receptor[select_num]
-        ind = self.ind[select_num]
+        ligand = self.ligand[select_num]  # [sel_ind],
+        receptor = self.receptor[select_num]  # [sel_ind]
+        ind = self.ind[select_num]  # [sel_ind]
         exp = self.exp
         self.local_I = np.zeros((total_len, self.N))
         self.local_I_R = self.local_I.copy()
         self.pos = self.local_I.copy()
 
         if method in ['z-score', 'both']:
+            self.local_v, self.local_st = np.zeros(total_len), np.zeros(total_len)
             self.local_z, self.local_z_p = np.zeros((total_len, self.N)), np.zeros((total_len, self.N))
-            wij_sq = (self.rbf_d ** 2).sum(1)           #wij_sq = (self.rbf_d.power(2)).sum(1)
+            wij_sq = (self.rbf_d.power(2)).sum(1)
            
         if method in ['both', 'permutation']:
             LEN_div = int(n_perm / nproc)
@@ -248,6 +219,8 @@ class SpatialDM(object):
             self.local_perm_p =  self.local_I.copy()
             self.PermTbl = generate_perm_tbl(exp, n_perm, self.N)
         for k in range(total_len):
+            print('sub')
+            print(k)
             start = time.time()
             L = ligand[k]
             R = receptor[k]
@@ -258,9 +231,10 @@ class SpatialDM(object):
             mean_y = y.mean()
             x = x - x.mean()
             y = y - mean_y
+            x_sq, y_sq = x ** 2, y ** 2
 
-            self.local_I[k] = np.matmul(self.rbf_d, y) * x
-            self.local_I_R[k] = np.matmul(self.rbf_d, x) * y
+            self.local_I[k] = self.rbf_d.dot(y) * x
+            self.local_I_R[k] = self.rbf_d.dot(x) * y
             self.pos[k] = np.where(np.isnan(self.pos[k]), 0, self.pos[k])
 
             if method in ['z-score', 'both']:
@@ -306,7 +280,7 @@ class SpatialDM(object):
             _p = self.local_perm_p
             if fdr:
                 _p = fdrcorrection(np.hstack(_p))[1].reshape(_p.shape)
-                self.local_fdr = _p
+                self.local_z_fdr = _p
         self.selected_spots = (_p < threshold)
         self.n_spots = self.selected_spots.sum(1)
         self.local_method = method
@@ -370,29 +344,26 @@ def compute_pathway(sample, ls=None, path_name=None, dic=None):
     :param path_name: str. For later recall sample.path_summary[path_name]
     :param dic: a dic of SpatialDE results (See tutorial)
     """
-    if not 'path_summary' in sample.__dict__:
-        sample.__dict__['path_summary']={}
+    sample.__dict__['path_summary']={}
     if dic != None:
         sample.__dict__['path_summary']['pairs'] = dic
         for i in range(len(dic)):
             i=str(i)
             sample.__dict__['path_summary']['P{}'.format(i)]={}
-            cts = sample.geneInter.loc[dic['Pattern_'+i],'pathway_name'].value_counts()
+            cts = sample.geneInter.loc[dic['Pattern_'+i],'interaction.pathway_name'].value_counts()
             cts = cts[::-1]
             sample.__dict__['path_summary']['P{}'.format(i)]['counts'] = cts
             perc = cts / \
-                sample.geneInter.loc[:,'pathway_name'].value_counts()
+                sample.geneInter.loc[:,'interaction.pathway_name'].value_counts()
             sample.__dict__['path_summary']['P{}'.format(i)]['perc'] = perc.dropna()
     if type(ls)!=type(None):
         sample.__dict__['path_summary'][path_name] = {}
-        cts = sample.geneInter.loc[ls, 'pathway_name'].value_counts()
+        cts = sample.geneInter.loc[ls, 'interaction.pathway_name'].value_counts()
         cts = cts[::-1]
         sample.__dict__['path_summary'][path_name]['counts'] = cts
         perc = cts / \
-               sample.geneInter.loc[:, 'pathway_name'].value_counts()
+               sample.geneInter.loc[:, 'interaction.pathway_name'].value_counts()
         sample.__dict__['path_summary'][path_name]['perc'] = perc.dropna()
-<<<<<<< HEAD
-=======
 
 # # def plot_pairs(self, pairs_to_plot, pdf=None, figsize=(35, 5), markersize=18,
 #     #                cmap='Green', cmap_l='coolwarm', cmap_r='coolwarm'):
@@ -496,4 +467,3 @@ def compute_pathway(sample, ls=None, path_name=None, dic=None):
 #         for k, v in checkpoint.items():
 #             np.save(result_dir + '/{}.npy'.format(k), np.array(v, dtype=object))
 #             print('Successfully save result_dir/{} ...'.format(k))
->>>>>>> 9ee58d14594057a2347c41a5f2dc31eae9ffca8c

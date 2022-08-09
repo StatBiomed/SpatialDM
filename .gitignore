@@ -3,3 +3,5 @@ __pycache__/
 .idea/
 .DS_Store
 tutorial/output
+spatialdm/test.py
+spatialdm/pdfs

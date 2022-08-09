@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from sklearn import linear_model
+import scipy.stats as stats
 
 def plt_util(title):
     plt.xticks([])
@@ -89,3 +91,47 @@ def dot_path(sample, name, pdf=None, figsize=(3,5)):
     plt.tight_layout()
     if pdf != None:
         plt.savefig(pdf+'.pdf')
+
+
+def corr_plot(x, y, max_num=10000, outlier=0.01, line_on=True, method='spearman',
+              legend_on=True, size=30, dot_color=None, outlier_color="r",
+              alpha=0.8, color_rate=10, corr_on=None):
+    if method == 'pearson':
+        score = stats.pearsonr(x, y)
+    if method == 'spearman':
+        score = stats.spearmanr(x, y)
+    np.random.seed(0)
+    if len(x) > max_num:
+        idx = np.random.permutation(len(x))[:max_num]
+        x, y = x[idx], y[idx]
+    outlier = int(len(x) * outlier)
+
+    xy = np.vstack([x, y])
+    z = stats.gaussian_kde(xy)(xy)
+    idx = z.argsort()
+    idx1, idx2 = idx[outlier:], idx[:outlier]
+
+    if dot_color is None:
+        # c_score = np.log2(z[idx]+100)
+        c_score = np.log2(z[idx] + color_rate * np.min(z[idx]))
+    else:
+        # idx2 = []
+        c_score = dot_color
+
+    plt.set_cmap("Blues")
+    plt.scatter(x[idx], y[idx], c=c_score, edgecolor=None, s=size, alpha=alpha)
+    plt.scatter(x[idx2], y[idx2], c=outlier_color, edgecolor=None, s=size / 5,
+                alpha=alpha / 3.0)  # /5
+
+    # plt.grid(alpha=0.4)
+
+    if line_on:
+        clf = linear_model.LinearRegression()
+        clf.fit(x.reshape(-1, 1), y)
+        xx = np.linspace(x.min(), x.max(), 1000).reshape(-1, 1)
+        yy = clf.predict(xx)
+        plt.plot(xx, yy, "k--", label="R=%.3f" % score[0])
+        # plt.plot(xx, yy, "k--")
+
+    if legend_on or corr_on:
+        plt.legend(loc="best", fancybox=True, ncol=1)
