@@ -94,3 +94,71 @@ def pair_selection(sample, n_perm, sel_ind, method):
             sample.global_perm[k] = local_mat.sum(axis=1) / \
                               ((sum(x_sq) * sum(y_sq)) ** (1 / 2))
         #print(str(k) + ' pairs global selection finished in: ' + str(time.time()-start))
+        
+
+def pair_selection_matrix(sample, n_perm, sel_ind, method, via_sparse=True):
+    # local variables (only live in this function scope)
+    ligand = sample.ligand[sel_ind]
+    receptor = sample.receptor[sel_ind]
+    GEX = sample.exp
+    
+    ## Check if the sparse matrix helps
+    if via_sparse:
+        from scipy.sparse import csc_matrix, csr_matrix
+        rbf_d = csc_matrix(sample.rbf_d)
+    else:
+        rbf_d = sample.rbf_d
+    
+    def _standardise(X, axis=None):
+        """Standardise an array
+        """
+        X = X - X.mean(axis=axis, keepdims=True)
+        X = X / np.sqrt(np.sum(X**2, axis=axis, keepdims=True))
+        return X
+
+    # averaged ligand values
+    L1 = [x[0] for x in ligand]
+    L_mat = GEX.loc[:, L1].values.astype(np.float)
+    for k in range(len(ligand)):
+        if len(ligand[k]) > 1:
+            L_mat[:, k] = GEX.loc[:, ligand[k]].values.mean(1)
+
+    # averaged receptor values
+    R1 = [x[0] for x in receptor]
+    R_mat = GEX.loc[:, R1].values.astype(np.float)
+    for k in range(len(receptor)):
+        if len(receptor[k]) > 1:
+            R_mat[:, k] = GEX.loc[:, receptor[k]].values.mean(1)
+    
+    ## Check non-epxressed pairs
+    idx_use = (L_mat.sum(0) > 0) * (R_mat.sum(0) > 0)
+    if (np.mean(idx_use) < 1):
+        print('Warning: some LR pairs have no expression.')
+    
+    sample.ligand_use = ligand[idx_use]
+    sample.receptor_use = receptor[idx_use]
+    R_mat_use = _standardise(R_mat[:, idx_use], axis=0)
+    L_mat_use = _standardise(L_mat[:, idx_use], axis=0)
+    
+    ## Change to sparse matrix
+    # if via_sparse:
+    #     from scipy.sparse import csc_matrix, csr_matrix
+    #     rbf_d = csr_matrix(rbf_d)
+    #     L_mat_use = csc_matrix(L_mat_use)
+    #     R_mat_use = csr_matrix(R_mat_use)  
+    #     sample.global_I = np.sum((rbf_d @ L_mat_use).multiply(R_mat_use), 
+    #                              axis=0).A
+
+    sample.global_I = ((rbf_d @ L_mat_use) * R_mat_use).sum(axis=0)
+
+    ## Calculate p values
+    if method in ['both', 'z-score']:
+        sample.z = sample.global_I / sample.st
+        sample.z_p = stats.norm.sf(sample.z)
+    if method in ['both', 'permutation']:
+        sample.global_perm = np.zeros((L_mat.shape[1], n_perm))
+        for i in tqdm(range(n_perm)):
+            _idx = np.random.permutation(L_mat.shape[0])
+            sample.global_perm[:, i] = np.sum(
+                (rbf_d @ L_mat_use[_idx, :]) * R_mat_use, axis=0)
+                

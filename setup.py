@@ -24,7 +24,8 @@ reqs = [
     'scipy>=1.4.0', 
     'matplotlib', 
     'statsmodels>=0.11.1',
-    'scanpy'
+    'scanpy',
+    'threadpoolctl'
 ]
 
 setup(

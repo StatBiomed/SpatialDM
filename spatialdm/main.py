@@ -11,7 +11,7 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 import json
 from scipy.sparse import csc_matrix
-from utils import *
+from .utils import *
 
 class SpatialDM(object):
     """ 
@@ -107,7 +107,8 @@ class SpatialDM(object):
             raise ValueError("No effective RL. Please have a check on input exp/species.")
         return
 
-    def spatialdm_global(self, n_perm=1000, select_num=None, method='z-score',nproc=1):
+    def spatialdm_global(self, n_perm=1000, select_num=None, method='z-score',
+                         nproc=1, via_matrix=True, via_sparse=True):
         """
             global selection. 2 alternative methods can be specified.
         :param n_perm: number of times for shuffling receptor expression for a given pair, default to 1000.
@@ -138,21 +139,28 @@ class SpatialDM(object):
 
         if not (method in ['both', 'z-score', 'permutation']):
             raise ValueError("Only one of ['z-score', 'both', 'permutation'] is supported")
+        
+        ## different approaches
+        if via_matrix:
+            sel_ind = np.arange(len(select_num))
+            from threadpoolctl import threadpool_limits
+            with threadpool_limits(limits=nproc, user_api='blas'):
+                pair_selection_matrix(self, n_perm, sel_ind, method, via_sparse)
+        else:
+            LEN_div = int(len(select_num) / nproc)  # multiprocessing split by pairs
+            pool = multiprocessing.Pool(processes=nproc)
+            for ii in range(nproc):
 
-        LEN_div = int(len(select_num) / nproc)  # multiprocessing split by pairs
-        pool = multiprocessing.Pool(processes=nproc)
-        for ii in range(nproc):
-
-            sel_ind = np.arange(LEN_div * ii, LEN_div * (ii+1), 1)
-            pool.apply_async(pair_selection(self, n_perm, sel_ind, method))
-        pool.close()
-        pool.join()
-        pool = multiprocessing.Pool(processes=nproc)
-        if (len(select_num) % nproc) > 0:
-            sel_ind = select_num[-(len(select_num) % nproc):]
-            pool.apply_async(pair_selection(self, n_perm, sel_ind, method))
-        pool.close()
-        pool.join()
+                sel_ind = np.arange(LEN_div * ii, LEN_div * (ii+1), 1)
+                pool.apply_async(pair_selection(self, n_perm, sel_ind, method))
+            pool.close()
+            pool.join()
+            pool = multiprocessing.Pool(processes=nproc)
+            if (len(select_num) % nproc) > 0:
+                sel_ind = select_num[-(len(select_num) % nproc):]
+                pool.apply_async(pair_selection(self, n_perm, sel_ind, method))
+            pool.close()
+            pool.join()
 
         if method in ['z-score', 'both']:
             self.z_p = np.where(np.isnan(self.z_p), 1, self.z_p)
