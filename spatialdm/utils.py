@@ -9,6 +9,7 @@ from scipy import stats
 import time
 import matplotlib.pyplot as plt
 import multiprocessing
+from tqdm import tqdm
 
 
 # global variance
@@ -70,7 +71,7 @@ def pair_selection(sample, n_perm, sel_ind, method):
     ligand = sample.ligand
     receptor = sample.receptor
     exp = sample.exp
-    for k in sel_ind:
+    for k in tqdm(sel_ind):
         start = time.time()
         L = ligand[k]
         R = receptor[k]
@@ -92,4 +93,4 @@ def pair_selection(sample, n_perm, sel_ind, method):
             local_mat = np.matmul(sample.rbf_d, value.reshape(n_perm, sample.N).T).T * x
             sample.global_perm[k] = local_mat.sum(axis=1) / \
                               ((sum(x_sq) * sum(y_sq)) ** (1 / 2))
-        print(str(k) + ' pairs global selection finished in: ' + str(time.time()-start))
+        #print(str(k) + ' pairs global selection finished in: ' + str(time.time()-start))
