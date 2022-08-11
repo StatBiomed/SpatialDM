@@ -2,3 +2,4 @@
 
 from . import datasets
 from .main import SpatialDM
+from .version import __version__
