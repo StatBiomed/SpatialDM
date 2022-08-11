@@ -1,5 +1,5 @@
 from copy import copy
-from _util_dataset import AMetadata
+from ._util_dataset import AMetadata
 
 
 _mel = AMetadata(
