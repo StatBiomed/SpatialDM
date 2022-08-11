@@ -1,6 +1,6 @@
-============================================================
-SpatialDM: Spatail Direct Messaging Detected bivariate Moran
-============================================================
+===============================================================
+SpatialDM: Spatial Direct Messaging Detected by bivariate Moran
+===============================================================
 
 About
 =====
@@ -31,8 +31,8 @@ Installation time: < 1 min
 Quick example
 =============
 
-Using the buiding melanoma dataset as an example, the following Python script
-will compute the p value inidicating whether a certain Ligand-Receptor is 
+Using the build-in melanoma dataset as an example, the following Python script
+will compute the p-value indicating whether a certain Ligand-Receptor is 
 spatially co-expressed.
 
 .. code-block:: python
