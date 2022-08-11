@@ -1,0 +1,13 @@
+# Just until rtd.org understands pyproject.toml
+spatialdm
+setuptools
+setuptools_scm
+typing_extensions
+importlib_metadata
+sphinx_rtd_theme>=0.3
+sphinx_autodoc_typehints
+
+# converting notebooks to html
+ipykernel
+sphinx
+nbsphinx
