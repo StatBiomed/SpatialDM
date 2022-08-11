@@ -3,22 +3,20 @@ import numpy as np
 from statsmodels.stats.multitest import fdrcorrection
 import os
 
-def concat_db(samples, species, dir_db):
+def concat_db(samples, species):
     """
     Merge all interaction database from a list of spatialdm obj.
     :param samples: a list of spatialdm obj to be merged.
     :param species: str. 'human' or 'mouse'.
-    :param dir_db: dir of 0_CellChatDB folder.
     :return:
     """
     if species == 'mouse':
-        geneInter = pd.read_csv(os.path.join(dir_db, '0_CellChatDB',
-                                             species, 'interaction_input_CellChatDB.csv'),
-                                index_col=0)
+        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
+        comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
+
     elif species == 'human':
-        geneInter = pd.read_csv(os.path.join(dir_db, '0_CellChatDB',
-                                             species, 't.csv'), header=0, index_col=0)
-        geneInter.columns = pd.Series(geneInter.columns).str.split('.').str[1]
+        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638943', header=0, index_col=0)
+        comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
     else:
         raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
     db=pd.DataFrame({'ligand':np.hstack([sample.ligand for sample in samples]),

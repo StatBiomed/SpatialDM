@@ -69,28 +69,23 @@ class SpatialDM(object):
 
         return
 
-    def extract_lr(self, species, dir_db, min_cell=0):
+    def extract_lr(self, species, min_cell=0):
         """
             find overlapping LRs from CellChatDB
         :param species: only 'human' or 'mouse' is supported
-        :param dir_db: dir of 0_CellChatDB folder
         :param min_cell: for each selected pair, the spots expressing ligand or receptor should be larger than the min,
         respectively.
         :return: 3 obj attributes: ind, ligand, receptor
         """
         if species == 'mouse':
-            geneInter = pd.read_csv(os.path.join(dir_db, '0_CellChatDB',
-                                                species, 'interaction_input_CellChatDB.csv'),
-                                    index_col=0)
+            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
+            comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
+
         elif species == 'human':
-            geneInter = pd.read_csv(os.path.join(dir_db, '0_CellChatDB',
-                                                species, 't.csv'), header=0, index_col=0)
-            geneInter.columns = pd.Series(geneInter.columns).str.split('.').str[1]
+            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638943', header=0, index_col=0)
+            comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
         else:
             raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
-    
-        comp = pd.read_csv(os.path.join(dir_db, '0_CellChatDB', species,
-                                        'complex_input_CellChatDB.csv'), header=0, index_col=0)
         ligand = geneInter.ligand.values
         receptor = geneInter.receptor.values
         t = []

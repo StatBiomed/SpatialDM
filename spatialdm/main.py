@@ -11,13 +11,13 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 import json
 from scipy.sparse import csc_matrix
-from .utils import *
+from utils import *
 
 class SpatialDM(object):
     """ 
     class SpatialDM(object)
     """
-    def __init__(self, exp, spatialcoord):
+    def __init__(self, exp, raw, spatialcoord):
         """
         load spatial data
                 Index names for exp and spatialcoord should be exactly the same
@@ -25,6 +25,7 @@ class SpatialDM(object):
         :param spatialcoord: spatial coordinate (spatialcoord): two columns named 'x' and 'y', spots in rows.  
         """
         self.exp = exp
+        self.raw = raw
         self.spatialcoord = spatialcoord
         self.N = spatialcoord.shape[0]
         self.exp = self.exp.reindex(index=self.spatialcoord.index)
@@ -60,32 +61,26 @@ class SpatialDM(object):
         else:
             pass
 
-        # self.rbf_d = csc_matrix(self.rbf_d)
-
         return
 
-    def extract_lr(self, species, dir_db, min_cell=0):
+    def extract_lr(self, species, min_cell=0):
         """
             find overlapping LRs from CellChatDB
         :param species: only 'human' or 'mouse' is supported
-        :param dir_db: dir of 0_CellChatDB folder
         :param min_cell: for each selected pair, the spots expressing ligand or receptor should be larger than the min,
         respectively.
         :return: 3 obj attributes: ind, ligand, receptor
         """
         if species == 'mouse':
-            geneInter = pd.read_csv(os.path.join(dir_db, '0_CellChatDB',
-                                                species, 'interaction_input_CellChatDB.csv'),
-                                    index_col=0)
+            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
+            comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
+
         elif species == 'human':
-            geneInter = pd.read_csv(os.path.join(dir_db, '0_CellChatDB',
-                                                species, 't.csv'), header=0, index_col=0)
-            geneInter.columns = pd.Series(geneInter.columns).str.split('.').str[1]
+            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638943', header=0, index_col=0)
+            comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
         else:
             raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
-    
-        comp = pd.read_csv(os.path.join(dir_db, '0_CellChatDB', species,
-                                        'complex_input_CellChatDB.csv'), header=0, index_col=0)
+
         ligand = geneInter.ligand.values
         receptor = geneInter.receptor.values
         t = []
@@ -205,7 +200,7 @@ class SpatialDM(object):
         ligand = self.ligand[select_num]
         receptor = self.receptor[select_num]
         ind = self.ind[select_num]
-        exp = self.exp
+        exp = self.raw
         self.local_I = np.zeros((total_len, self.N))
         self.local_I_R = self.local_I.copy()
         self.pos = self.local_I.copy()
@@ -303,6 +298,9 @@ class SpatialDM(object):
                 res.to_csv(os.path.join(result_dir, attr + '.csv'), index=True)
             elif type(res) == np.ndarray:
                 np.save(os.path.join(result_dir, attr), res)
+            elif type(res) in [pd.core.indexes.base.Index, pd.core.series.Series]:
+                my_sample.__dict__[attr] = res.values
+                np.save(os.path.join(result_dir, attr), res)
             else:
                 dic[attr] = res
 
@@ -365,4 +363,3 @@ def compute_pathway(sample, ls=None, path_name=None, dic=None):
         perc = cts / \
                sample.geneInter.loc[:, 'pathway_name'].value_counts()
         sample.__dict__['path_summary'][path_name]['perc'] = perc.dropna()
-
