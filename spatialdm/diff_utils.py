@@ -27,7 +27,7 @@ def concat_db(samples, species):
     return db, geneInter
 
 class concat_obj(object):
-    def __init__(self, samples, names, species, dir_db, method='z-score', fdr=False):
+    def __init__(self, samples, names, species, method='z-score', fdr=False):
         """
         Merge all global results from a list of spatialdm obj
         :param samples: a list of spatialdm obj to be merged.
@@ -37,7 +37,7 @@ class concat_obj(object):
         :param method: 'z-score' or 'permutation'. Should be the commonly selected method from all samples.
         :param fdr: If use fdr or p-values for differential analysis
         """
-        self.db, self.geneInter = concat_db(samples, species, dir_db)
+        self.db, self.geneInter = concat_db(samples, species)
         self.n_samples = len(samples)
         self.method = method
         if method == 'z-score':

@@ -5,6 +5,7 @@ tutorial/output
 spatialdm/test.py
 spatialdm/pdfs
 
+tutorial/running_time.ipynb
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
