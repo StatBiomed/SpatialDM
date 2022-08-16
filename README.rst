@@ -5,7 +5,7 @@ SpatialDM: Spatial Direct Messaging Detected by bivariate Moran
 About
 =====
 
-SpatialDM (**Spatial** <u>D<u>irect **M**essaging, or **Spatial** co-expressed ligand and receptor **D**etected by **M**oran's bivariant extension), a statistical model and toolbox to identify the spatial co-expression (i.e., spatial association) between a pair of ligand and receptor. \
+SpatialDM (**Spatial** <u>D</u>irect **M**essaging, or **Spatial** co-expressed ligand and receptor **D**etected by **M**oran's bivariant extension), a statistical model and toolbox to identify the spatial co-expression (i.e., spatial association) between a pair of ligand and receptor. \
 
 It comprises two main steps: \
 1) global selection `spatialdm_global` to identify significantly interacting LR pairs; \
