@@ -1,12 +1,12 @@
 Installation
 ============
 
-SpatialDM is available through `PyPI <https://pypi.org/project/spatialdm/>`_. 
+SpatialDM is available through `PyPI <https://pypi.org/project/SpatialDM/>`_.
 To install, type the following command line and add ``-U`` for updates:
 
 .. code-block:: bash
 
-   pip install -U spatialdm
+   pip install -U SpatialDM
 
 Alternatively, you can install from this GitHub repository for latest (often 
 development) version by the following command line:

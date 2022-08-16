@@ -1,14 +1,9 @@
 import os
-import argparse
-import time
-
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from statsmodels.stats.multitest import fdrcorrection
 from scipy import spatial
-from scipy.stats import norm
-import matplotlib.pyplot as plt
 import json
 from threadpoolctl import threadpool_limits
 from scipy.sparse import csc_matrix, save_npz, load_npz

@@ -1,14 +1,11 @@
 """
 Utils of permutation calculation
 """
-import os
 import pandas as pd
 import numpy as np
 import random
 from scipy import stats
 import time
-import matplotlib.pyplot as plt
-import multiprocessing
 from tqdm import tqdm
 from scipy.sparse import csc_matrix
 

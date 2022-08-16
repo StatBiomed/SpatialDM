@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from statsmodels.stats.multitest import fdrcorrection
-import os
 
 def concat_db(samples, species):
     """
