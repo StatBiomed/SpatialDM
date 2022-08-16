@@ -5,7 +5,7 @@ setuptools_scm
 typing_extensions
 importlib_metadata
 sphinx_rtd_theme>=0.3
-sphinx_autodoc_typehints<=1.6
+sphinx_autodoc_typehints
 
 # converting notebooks to html
 ipykernel
