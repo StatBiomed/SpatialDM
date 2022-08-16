@@ -5,7 +5,7 @@ SpatialDM: Spatial Direct Messaging Detected by bivariate Moran
 About
 =====
 
-SpatialDM (**Spatial** <u>D</u>irect **M**essaging, or **Spatial** co-expressed ligand and receptor **D**etected by **M**oran's bivariant extension), a statistical model and toolbox to identify the spatial co-expression (i.e., spatial association) between a pair of ligand and receptor. \
+SpatialDM (Spatial Direct Messaging, or Spatial co-expressed ligand and receptor Detected by Moran's bivariant extension), a statistical model and toolbox to identify the spatial co-expression (i.e., spatial association) between a pair of ligand and receptor. \
 
 It comprises two main steps: \
 1) global selection `spatialdm_global` to identify significantly interacting LR pairs; \
@@ -56,6 +56,7 @@ spatially co-expressed.
   my_sample.spatialdm_local(n_perm=1000, method='both', select_num=None, nproc=1)     # local spot selection complete in seconds
   my_sample.sig_spots(method='permutation', fdr=False, threshold=0.1)     # significant local spots
   pl.plot_pairs(my_sample, ['CSF1_CSF1R'], marker='s') # visualize known melanoma pair(s)
+
 
 
 
