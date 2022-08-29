@@ -7,6 +7,18 @@ About
 
 SpatialDM (Spatial Direct Messaging, or Spatial co-expressed ligand and receptor Detected by Moran's bivariant extension), a statistical model and toolbox to identify the spatial co-expression (i.e., spatial association) between a pair of ligand and receptor. \
 
+Uniquely, SpatialDM can distinguish co-expressed ligand and receptor pairs from spatially separating pairs, and identify the spots of interaction.
+
+.. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/AvsB-1.png?raw=true
+   :width: 900px
+   :align: center
+
+With the analytical testing method, SpatialDM is scalable to 1 million spots within 12 min with only one core.
+
+.. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/runtime_aug16-1.png?raw=true
+   :width: 600px
+   :align: center
+   
 It comprises two main steps: \
 1) global selection `spatialdm_global` to identify significantly interacting LR pairs; \
 2) local selection `spatialdm_local` to identify local spots for each interaction.
@@ -63,14 +75,27 @@ spatially co-expressed.
 Detailed Manual
 ===============
 
-The full manual is at https://spatialdm.readthedocs.io, including 
-1) Permutation-based global & local selection in the melanoma data (293 spots, ST platform)
-2) Interactions in adult intestine using SpatialDM z-score approach (Visium platform)
-3) Differential analyses in the intestine data (8 samples)
+The full manual is at https://spatialdm.readthedocs.io, including:  
+
+* `Permutation-based SpatialDM (Recommended for small datasets, <10k spots)`_.
+
+* `Analytical z-score-based SpatialDM`_.
+
+* `Differential analyses of whole interactome among varying conditions`_.
+
+.. _Permutation-based SpatialDM (Recommended for small datasets, <10k spots): docs/melanoma.ipynb
+
+.. _Analytical z-score-based SpatialDM: docs/intestine_A1.ipynb
+
+.. _Differential analyses of whole interactome among varying conditions: docs/differential_test_intestine.ipynb
+
 
 
 
 References
 ==========
 
-A BioRxiv preprint will be online soon.
+SpatialDM manuscript with more details is available on bioRxiv_ now and is currently under review.
+
+.. _bioRxiv: https://www.biorxiv.org/content/10.1101/2022.08.19.504616v1/
+
