@@ -70,15 +70,16 @@ spatially co-expressed.
   my_sample.spatialdm_global(1000, select_num=None, method='permutation')  # complete in seconds
   my_sample.sig_pairs(method='permutation', fdr=True, threshold=0.1)     # select significant pairs
   pl.global_plot(my_sample, pairs=['CSF1_CSF1R'])  # Overview of global selection
-  .. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/global_plot.png?raw=true
-   :width: 600px
-   :align: center
    
   # Local selection of significant spots
   my_sample.spatialdm_local(n_perm=1000, method='both', select_num=None, nproc=1)     # local spot selection complete in seconds
   my_sample.sig_spots(method='permutation', fdr=False, threshold=0.1)     # significant local spots
   pl.plot_pairs(my_sample, ['CSF1_CSF1R'], marker='s') # visualize known melanoma pair(s)
   
+.. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/global_plot.png?raw=true
+   :width: 600px
+   :align: center
+   
 .. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/csf.png?raw=true
    :width: 600px
    :align: center
