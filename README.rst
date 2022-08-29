@@ -59,18 +59,26 @@ spatially co-expressed.
   adata = sdm.datasets.melanoma()
   raw = pd.DataFrame(adata.raw.X, index=adata.obs_names, columns=adata.var_names)
   log = pd.DataFrame(adata.X, index=adata.obs_names, columns=adata.var_names)
+  spatialcoord = pd.DataFrame(adata.obsm['spatial'], index=adata.obs_names, columns=['x','y'])
+  
+  # Preprocessing
   my_sample = sdm.SpatialDM(log, raw, spatialcoord)     # load spatial data with simply log, raw, spatial input
   my_sample.extract_lr(species='human', min_cell=3)
   my_sample.weight_matrix(l=1.2, cutoff=0.2, single_cell=False)  # Not single-cell resolution
+  
+  # Global selection of significant pairs
   my_sample.spatialdm_global(1000, select_num=None, method='permutation')  # complete in seconds
   my_sample.sig_pairs(method='permutation', fdr=True, threshold=0.1)     # select significant pairs
-.. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/global_plot.png?raw=true
+  pl.global_plot(my_sample, pairs=['CSF1_CSF1R'])  # Overview of global selection
+  .. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/global_plot.png?raw=true
    :width: 600px
    :align: center
-  pl.global_plot(my_sample)  # Overview of global selection
+   
+  # Local selection of significant spots
   my_sample.spatialdm_local(n_perm=1000, method='both', select_num=None, nproc=1)     # local spot selection complete in seconds
   my_sample.sig_spots(method='permutation', fdr=False, threshold=0.1)     # significant local spots
   pl.plot_pairs(my_sample, ['CSF1_CSF1R'], marker='s') # visualize known melanoma pair(s)
+  
 .. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/csf.png?raw=true
    :width: 600px
    :align: center
