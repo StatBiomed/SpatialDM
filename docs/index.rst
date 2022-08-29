@@ -42,9 +42,7 @@ Please refer to our tutorials for details:
 `Differential analyses of whole interactome among varying conditions`_.
 
 .. _Permutation-based SpatialDM (Recommended for small datasets, <10k spots): melanoma.ipynb
-
 .. _Analytical z-score-based SpatialDM: intestine_A1.ipynb
-
 .. _Differential analyses of whole interactome among varying conditions: differential_test_intestine.ipynb
 
 
