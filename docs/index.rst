@@ -35,9 +35,11 @@ SpatialDM comprises two main steps: \
 
 Please refer to our tutorials for details:
 
-`Permutation-based SpatialDM (Recommended for small datasets, <10k spots)`_.
-`Analytical z-score-based SpatialDM`_.
-`Differential analyses of whole interactome among varying conditions`_.
+* `Permutation-based SpatialDM (Recommended for small datasets, <10k spots)`_.
+
+* `Analytical z-score-based SpatialDM`_.
+
+* `Differential analyses of whole interactome among varying conditions`_.
 
 .. _Permutation-based SpatialDM (Recommended for small datasets, <10k spots): melanoma.ipynb
 
