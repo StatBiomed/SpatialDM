@@ -77,7 +77,7 @@ spatially co-expressed.
   pl.plot_pairs(my_sample, ['CSF1_CSF1R'], marker='s') # visualize known melanoma pair(s)
   
 .. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/global_plot.png?raw=true
-   :width: 600px
+   :width: 400px
    :align: center
    
 .. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/csf.png?raw=true
