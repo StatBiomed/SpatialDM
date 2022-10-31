@@ -2,7 +2,7 @@
 
 .. |PyPI| image:: https://img.shields.io/pypi/v/SpatialDM.svg
     :target: https://pypi.org/project/SpatialDM/
-.. |Docs| image:: https://readthedocs.org/projects/SpatialDM/badge/?version=latest
+.. |Docs| image:: https://readthedocs.org/projects/spatialdm/badge/?version=latest
    :target: https://SpatialDM.readthedocs.io
 .. |Build Status| image:: https://travis-ci.org/leeyoyohku/SpatialDM.svg?branch=main
    :target: https://travis-ci.org/leeyoyohku/SpatialDM
