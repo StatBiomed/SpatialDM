@@ -5,7 +5,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from sklearn import linear_model
 import scipy.stats as stats
 import seaborn as sns
-
+from utils import compute_pathway
 color_codes = [(0.4980392156862745, 0.788235294117647, 0.4980392156862745, 1.0),
                  (0.7450980392156863, 0.6823529411764706, 0.8313725490196079, 1.0),
                  (0.9921568627450981, 0.7529411764705882, 0.5254901960784314, 1.0),
@@ -23,22 +23,22 @@ def plt_util(title):
 
 def plot_selected_pair(sample, pair, spots, selected_ind, figsize, cmap, cmap_l, cmap_r, **kwargs):
     i = pd.Series(selected_ind == pair).idxmax()
-    L = sample.ligand[sample.ind == pair][0]
-    R = sample.receptor[sample.ind == pair][0]
+    L = sample.uns['ligand'][sample.uns['ind'] == pair][0]
+    R = sample.uns['receptor'][sample.uns['ind'] == pair][0]
     l1, l2 = len(L), len(R)
     plt.figure(figsize=figsize)
     plt.subplot(1, 5, 1)
-    plt.scatter(sample.spatialcoord.x, sample.spatialcoord.y, c=spots.loc[pair], cmap=cmap,
+    plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=spots.loc[pair], cmap=cmap,
                 vmax=1, **kwargs)
     plt_util('Moran: ' + str(sample.n_spots[i]) + ' spots')
     for l in range(l1):
         plt.subplot(1, 5, 2 + l)
-        plt.scatter(sample.spatialcoord.x, sample.spatialcoord.y, c=sample.logcounts.loc[:,L[l]].values,
+        plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,L[l]].X,
                     cmap=cmap_l, **kwargs)
         plt_util('Ligand: ' + L[l])
     for l in range(l2):
         plt.subplot(1, 5, 2 + l1 + l)
-        plt.scatter(sample.spatialcoord.x, sample.spatialcoord.y, c=sample.logcounts.loc[:,R[l]],
+        plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,R[l]].X,
                     cmap=cmap_r, **kwargs)
         plt_util('Receptor: ' + R[l])
 
@@ -56,11 +56,11 @@ def plot_pairs(sample, pairs_to_plot, pdf=None, figsize=(35, 5),
     :return:
     """
     if sample.local_method == 'z-score':
-        selected_ind = sample.local_z_p.index
-        spots = 1 - sample.local_z_p
+        selected_ind = sample.uns['local_z_p'].index
+        spots = 1 - sample.uns['local_z_p']
     if sample.local_method == 'permutation':
-        selected_ind = sample.local_perm_p.index
-        spots = 1 - sample.local_perm_p
+        selected_ind = sample.uns['local_perm_p'].index
+        spots = 1 - sample.uns['local_perm_p']
     if pdf != None:
         with PdfPages(pdf + '.pdf') as pdf:
             for pair in pairs_to_plot:
@@ -77,7 +77,36 @@ def plot_pairs(sample, pairs_to_plot, pdf=None, figsize=(35, 5),
             plt.show()
             plt.close()
 
-def dot_path(sample, name, pdf=None, figsize=(3,5), **kwargs):
+from matplotlib import gridspec
+def make_grid_spec(
+    ax_or_figsize,
+    nrows: int,
+    ncols: int,
+    wspace= None,
+    hspace = None,
+    width_ratios = None,
+    height_ratios= None,
+):
+    kw = dict(
+        wspace=wspace,
+        hspace=hspace,
+        width_ratios=width_ratios,
+        height_ratios=height_ratios,
+    )
+    if isinstance(ax_or_figsize, tuple):
+        fig = plt.figure(figsize=ax_or_figsize)
+        return fig, gridspec.GridSpec(nrows, ncols, **kw)
+    else:
+        ax = ax_or_figsize
+        ax.axis('off')
+        ax.set_frame_on(False)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        return ax.figure, ax.get_subplotspec().subgridspec(nrows, ncols, **kw)
+
+def dot_path(adata, uns_key=None, dic=None, cut_off=1, groups=None, markersize = 50,
+             legend_size=(8, 3), figsize=(6,8),
+             **kwargs):
     """
     plot pathway enrichment dotplot.
     :param sample: spatialdm obj
@@ -88,17 +117,72 @@ def dot_path(sample, name, pdf=None, figsize=(3,5), **kwargs):
     :return: ax: matplotlib Axes
     """
     plt.figure(figsize=figsize)
-    cts = sample.__dict__['path_summary'][name]['counts']
-    perc = sample.__dict__['path_summary'][name]['perc']
-    plt.scatter(cts.values, cts.index, c=perc.loc[cts.index].values, cmap='Reds', **kwargs)
-    plt.xlabel('Number of pairs')
-    plt.xticks(np.arange(0,max(cts.values)+2))
-    plt.tick_params(axis='y', labelsize=10)
-    plt.title(name)
-    plt.colorbar(location='bottom', label='percentage of pairs out of CellChatDB')
-    plt.tight_layout()
-    if pdf != None:
-        plt.savefig(pdf+'.pdf')
+    if uns_key is not None:
+        dic = {uns_key: adata.uns[uns_key]}
+    pathway_res = compute_pathway(adata, dic=dic)
+    pathway_res = pathway_res[pathway_res.selected >= cut_off]
+    if groups is not None:
+        pathway_res = pathway_res.loc[pathway_res.name.isin(groups)]
+    n_subplot = len(pathway_res.name.unique())
+    for i, name in enumerate(pathway_res.name.unique()):
+        plt.figure(figsize=figsize)
+        plt.subplot((n_subplot + 1) // 2, 2, i + 1)
+        result1 = pathway_res.loc[pathway_res.name == name]
+        result1 = result1.sort_values('selected', ascending=False)
+        cts = result1.selected
+        perc = result1.selected / result1.pathway_size
+        value = -np.log10(result1.loc[:, 'fisher_p'].values)
+        size = value * markersize
+        plt.scatter(result1.selected.values, result1.index, c=perc.loc[result1.index].values,
+                    s=size, cmap='Reds')
+        plt.xlabel('Number of pairs')
+        plt.xticks(np.arange(0, max(result1.selected.values) + 2))
+        plt.tick_params(axis='y', labelsize=10)
+        plt.title(name)
+        plt.colorbar(location='bottom', label='percentage of pairs out of CellChatDB')
+        plt.tight_layout()
+
+        fig, legend_gs = make_grid_spec(
+            legend_size,
+            nrows=4, ncols=1
+        )
+
+        # plot size bar
+        size_uniq = np.quantile(size, np.arange(1, 0, -0.1))
+        value_uniq = np.quantile(value, np.arange(1, 0, -0.1))
+        size_range = value_uniq
+        size_legend_ax = fig.add_subplot(legend_gs[1])
+        size_legend_ax.scatter(
+            np.arange(len(size_uniq)) + 0.5,
+            np.repeat(0, len(size_uniq)),
+            s=size_uniq,
+            color='gray',
+            edgecolor='black',
+            zorder=100,
+        )
+        size_legend_ax.set_xticks(np.arange(len(value_uniq)) + 0.5)
+        # labels = [
+        #     "{}".format(np.round((x * 100), decimals=0).astype(int)) for x in size_range
+        # ]
+        size_legend_ax.set_xticklabels(np.round(np.exp(-value_uniq), 3), fontsize='small')
+
+        # remove y ticks and labels
+        size_legend_ax.tick_params(
+            axis='y', left=False, labelleft=False, labelright=False
+        )
+
+        # remove surrounding lines
+        size_legend_ax.spines['right'].set_visible(False)
+        size_legend_ax.spines['top'].set_visible(False)
+        size_legend_ax.spines['left'].set_visible(False)
+        size_legend_ax.spines['bottom'].set_visible(False)
+        size_legend_ax.grid(False)
+
+        ymax = size_legend_ax.get_ylim()[1]
+        size_legend_ax.set_title('fisher exact p-value (right tile)', y=ymax + 0.9, size='small')
+
+        xmin, xmax = size_legend_ax.get_xlim()
+        size_legend_ax.set_xlim(xmin - 0.15, xmax + 0.5)
 
 
 def corr_plot(x, y, max_num=10000, outlier=0.01, line_on=True, method='spearman',
@@ -183,12 +267,12 @@ def global_plot(sample, pairs=None, figsize=(3,4), **kwarg):
     """
     fig = plt.figure(figsize=figsize)
     ax = plt.axes()
-    plt.scatter(np.log1p(sample.global_I), -np.log1p(sample.global_res.perm_pval),
-                c=sample.global_res.selected, **kwarg)
+    plt.scatter(np.log1p(sample.uns['global_I']), -np.log1p(sample.uns['global_res.perm_pval']),
+                c=sample.uns['global_res.selected'], **kwarg)
     if pairs!=None:
         for i,pair in enumerate(pairs):
-            plt.scatter(np.log1p(sample.global_I)[sample.ind==pair],
-                        -np.log1p(sample.global_res.perm_pval)[sample.ind==pair],
+            plt.scatter(np.log1p(sample.uns['global_I'])[sample.uns['ligand'].index==pair],
+                        -np.log1p(sample.uns['global_res.perm_pval'])[sample.uns['ind']==pair],
                         c=color_codes[i])
     plt.xlabel('log1p Global I')
     plt.ylabel('-log1p(pval)')
@@ -197,9 +281,9 @@ def global_plot(sample, pairs=None, figsize=(3,4), **kwarg):
     plt.legend(np.hstack(([''], pairs)))
 
 def differential_dendrogram(sample):
-    _range = np.arange(1, sample.n_sub)
-    ax = sns.clustermap(1-sample.p_df.loc[(sample.p_val<0.1) & (sample.tf_df.sum(1).isin(_range)),
-                                     sample.subset])
+    _range = np.arange(1, sample.uns['n_sub'])
+    ax = sns.clustermap(1-sample.uns['p_df'].loc[(sample.uns['p_val']<0.1) & (sample.uns['tf_df'].sum(1).isin(_range)),
+                                     sample.uns['subset']])
     return ax
 
 def differential_volcano(sample, pairs=None, legend=None, xmax = 25, xmin = -20):
@@ -216,32 +300,32 @@ def differential_volcano(sample, pairs=None, legend=None, xmax = 25, xmin = -20)
     min z-score difference
     :return: ax: matplotlib Axes.
     """
-    q1 = sample.q1
-    q2 = sample.q2
-    fdr_co = sample.fdr_co
+    q1 = sample.uns['q1']
+    q2 = sample.uns['q2']
+    fdr_co = sample.uns['fdr_co']
 
-    _range = np.arange(1, sample.n_sub)
-    diff_cp = sample.diff.copy()
+    _range = np.arange(1, sample.uns['n_sub'])
+    diff_cp = sample.uns['diff'].copy()
     diff_cp = np.where((diff_cp>xmax), xmax, diff_cp)
     diff_cp = np.where((diff_cp<xmin), xmin, diff_cp)
 
-    plt.scatter(diff_cp[sample.tf_df.sum(1).isin(_range)],
-                -np.log10(sample.diff_fdr)[sample.tf_df.sum(1).isin(_range)], s=10, c='grey')
+    plt.scatter(diff_cp[sample.uns['tf_df'].sum(1).isin(_range)],
+                -np.log10(sample.uns['diff_fdr'])[sample.uns['tf_df'].sum(1).isin(_range)], s=10, c='grey')
     plt.xlabel('adult z - fetus z')
-    plt.ylabel('diff_cperential fdr (log-likelihood, -log10)')
+    plt.ylabel('differential fdr (log-likelihood, -log10)')
     plt.xlim([xmin-1,xmax+1])
 
-    plt.scatter(diff_cp[(diff_cp>q1) & (sample.diff_fdr<fdr_co) & \
-                           (sample.tf_df.sum(1).isin(_range))],
-                -np.log10(sample.diff_fdr)[(diff_cp>q1) & (sample.diff_fdr<fdr_co) & \
-                           (sample.tf_df.sum(1).isin(_range))], s=10,c='tab:orange')
-    plt.scatter(diff_cp[(diff_cp<q2) & (sample.diff_fdr<fdr_co) & \
-                           (sample.tf_df.sum(1).isin(_range))],
-                -np.log10(sample.diff_fdr)[(diff_cp<q2) & (sample.diff_fdr<fdr_co)& \
-                           (sample.tf_df.sum(1).isin(_range))], s=10,c='tab:green')
+    plt.scatter(diff_cp[(diff_cp>q1) & (sample.uns['diff_fdr']<fdr_co) & \
+                           (sample.uns['tf_df'].sum(1).isin(_range))],
+                -np.log10(sample.uns['diff_fdr'])[(diff_cp>q1) & (sample.uns['diff_fdr']<fdr_co) & \
+                           (sample.uns['tf_df'].sum(1).isin(_range))], s=10,c='tab:orange')
+    plt.scatter(diff_cp[(diff_cp<q2) & (sample.uns['diff_fdr']<fdr_co) & \
+                           (sample.uns['tf_df'].sum(1).isin(_range))],
+                -np.log10(sample.uns['diff_fdr'])[(diff_cp<q2) & (sample.uns['diff_fdr']<fdr_co)& \
+                           (sample.uns['tf_df'].sum(1).isin(_range))], s=10,c='tab:green')
     if type(pairs)!=type(None):
         for i,pair in enumerate(pairs):
-            plt.scatter(diff_cp[sample.p_df.index==pair],
-                        -np.log10(sample.diff_fdr)[sample.p_df.index==pair], c=color_codes[i])
+            plt.scatter(diff_cp[sample.uns['p_df'].index==pair],
+                        -np.log10(sample.uns['diff_fdr'])[sample.uns['p_df'].index==pair], c=color_codes[i])
     plt.legend(np.hstack(([''], legend, pairs)))
 
