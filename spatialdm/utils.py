@@ -149,7 +149,6 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
                 (adata.obsp['weight'] @ L_mat_use[_idx, n_short_lri:]) * R_mat_use[_idx, n_short_lri:], axis=0)
 
 
-
 def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method):
     # local variables (only live in this function scope)
     # ligand = adata.uns['ligand'].loc[sel_ind]
@@ -167,71 +166,71 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method):
     if adata.uns['mean'] == 'geometric':
         from scipy.stats.mstats import gmean
     L1 = [pd.Series(x[0]).dropna().values for x in ligand.values]
-    L_mat0 = [adata[:, L1[l]].X.astype(np.float)[:,0] for l in range(len(L1))]
-    for i,k in enumerate(ligand.index):
+    L_mat0 = [adata.raw[:, L1[l]].X.astype(np.float)[:, 0] for l in range(len(L1))]
+    for i, k in enumerate(ligand.index):
         if len(ligand.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
-                L_mat0[i] = gmean(adata[:, ligand.loc[k].dropna()].X, axis=1)
+                L_mat0[i] = gmean(adata.raw[:, ligand.loc[k].dropna()].X, axis=1)
             else:
-                L_mat0[i] = adata[:, ligand.loc[k].dropna()].X.mean(1)
+                L_mat0[i] = adata.raw[:, ligand.loc[k].dropna()].X.mean(1)
 
     # averaged receptor values
     R1 = [pd.Series(x[0]).dropna().values for x in receptor.values]
-    R_mat0 = [adata[:, R1[r]].X.astype(np.float)[:, 0] for r in range(len(R1))]
+    R_mat0 = [adata.raw[:, R1[r]].X.astype(np.float)[:, 0] for r in range(len(R1))]
     for i, k in enumerate(receptor.index):
         if len(receptor.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
-                R_mat0[i] = gmean(adata[:, receptor.loc[k].dropna()].X, axis=1)
+                R_mat0[i] = gmean(adata.raw[:, receptor.loc[k].dropna()].X, axis=1)
             else:
-                R_mat0[i] = adata[:, receptor.loc[k].dropna()].X.mean(1)
+                R_mat0[i] = adata.raw[:, receptor.loc[k].dropna()].X.mean(1)
     n_short_lri = (adata.uns['geneInter'].loc[ligand.index, 'annotation'] \
-                   !='Secreted Signaling').sum()
+                   != 'Secreted Signaling').sum()
     ranges = [np.arange(n_short_lri), np.arange(n_short_lri, len(L1))]
     weight_matrices = [adata.obsp['nearest_neighbors'], adata.obsp['weight']]
     N = adata.shape[0]
     L_mat0 = np.array(L_mat0)
     R_mat0 = np.array(R_mat0)
+    pos = np.zeros((N, len(ligand)))
 
-    for r,weight_matrix in zip(ranges, weight_matrices):
+    for r, weight_matrix in zip(ranges, weight_matrices):
         R_mat = R_mat0[r].T
         L_mat = L_mat0[r].T
-        pos = (L_mat > 0) + (R_mat > 0)
+        pos[:, r] = (L_mat > 0) + (R_mat > 0)
         R_mat_use = _standardise(R_mat, Local=True, axis=0)
         L_mat_use = _standardise(L_mat, Local=True, axis=0)
         wij_sq = (weight_matrix ** 2).sum(1)
         rbf_d = csc_matrix(weight_matrix)
-
-        adata.uns['local_stat']['local_I'][:,r] = (rbf_d @ R_mat_use) * L_mat_use
-        adata.uns['local_stat']['local_I_R'][:,r] = (rbf_d @ L_mat_use) * R_mat_use
+        adata.uns['local_stat']['local_I'][:, r] = (rbf_d @ R_mat_use) * L_mat_use
+        adata.uns['local_stat']['local_I_R'][:, r] = (rbf_d @ L_mat_use) * R_mat_use
         ## Calculate p values
         if method in ['both', 'z-score']:
             norm_res1 = [stats.norm.fit(L_mat_use[:, i]) for i in range(L_mat_use.shape[1])]
             norm_res2 = [stats.norm.fit(R_mat_use[:, i]) for i in range(R_mat_use.shape[1])]
             norm_res1 = np.array(norm_res1)
             norm_res2 = np.array(norm_res2)
-            mu1_ls, std_L_ls = norm_res1[:,0], norm_res1[:,1]
-            mu2_ls, std_R_ls = norm_res2[:,0], norm_res2[:,1]
+            mu1_ls, std_L_ls = norm_res1[:, 0], norm_res1[:, 1]
+            mu2_ls, std_R_ls = norm_res2[:, 0], norm_res2[:, 1]
             sigma1_sq_ls = [(std1 * N / (N - 1)) for std1 in std_L_ls]
             sigma2_sq_ls = [(std2 * N / (N - 1)) for std2 in std_R_ls]
             std_ls = [compute_var_local(sigma1_sq, sigma2_sq, wij_sq, N) \
-                        for (sigma1_sq, sigma2_sq) in zip(sigma1_sq_ls, sigma2_sq_ls)]
-            adata.uns['local_z'][r] = (adata.uns['local_stat']['local_I'][:,r] + \
-                                        adata.uns['local_stat']['local_I_R'][:,r]).T / std_ls
+                      for (sigma1_sq, sigma2_sq) in zip(sigma1_sq_ls, sigma2_sq_ls)]
+            adata.uns['local_z'][r] = (adata.uns['local_stat']['local_I'][:, r] + \
+                                       adata.uns['local_stat']['local_I_R'][:, r]).T / std_ls
             adata.uns['local_z_p'][r] = stats.norm.sf(adata.uns['local_z'][r])
-            #adata.uns['local_z_p'] = np.where(pos.T == False, 1, adata.uns['local_z_p'])
 
         if method in ['both', 'permutation']:
             for i in tqdm(range(n_perm)):
                 _idx = np.random.permutation(L_mat.shape[0])
-                adata.uns['local_stat']['local_permI'][r, i,:] = ((rbf_d @ R_mat_use[_idx, :]) * L_mat_use).T
-                adata.uns['local_stat']['local_permI_R'][r, i,:] = ((rbf_d @ L_mat_use[_idx, :]) * R_mat_use).T
-                        #adata.uns['local_perm_p'] = np.where(pos.T == False, 1, adata.uns['local_perm_p'])
+                adata.uns['local_stat']['local_permI'][r, i, :] = ((rbf_d @ R_mat_use[_idx, :]) * L_mat_use).T
+                adata.uns['local_stat']['local_permI_R'][r, i, :] = ((rbf_d @ L_mat_use[_idx, :]) * R_mat_use).T
     try:
+        adata.uns['local_z_p'] = np.where(pos.T == False, 1, adata.uns['local_z_p'])
         adata.uns['local_z_p'] = pd.DataFrame(adata.uns['local_z_p'], index=ind)
         adata.uns['local_perm_p'] = (np.expand_dims(adata.uns['local_stat']['local_I'].T + \
                                                     adata.uns['local_stat']['local_I_R'].T, 1) <= \
                                      (adata.uns['local_stat']['local_permI'] + adata.uns['local_stat'][
                                          'local_permI_R'])).sum(1) / n_perm
+        adata.uns['local_perm_p'] = np.where(pos.T == False, 1, adata.uns['local_perm_p'])
         adata.uns['local_perm_p'] = pd.DataFrame(adata.uns['local_perm_p'], index=ind)
     except OSError as e:
         if e.errno != e.errno:

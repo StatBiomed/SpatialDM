@@ -5,7 +5,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 from sklearn import linear_model
 import scipy.stats as stats
 import seaborn as sns
-from utils import compute_pathway
+#from utils import compute_pathway
+from .utils import *
 import holoviews as hv
 from holoviews import opts, dim
 from bokeh.io import output_file, show
