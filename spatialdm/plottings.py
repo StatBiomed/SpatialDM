@@ -6,14 +6,259 @@ from sklearn import linear_model
 import scipy.stats as stats
 import seaborn as sns
 from utils import compute_pathway
-color_codes = [(0.4980392156862745, 0.788235294117647, 0.4980392156862745, 1.0),
-                 (0.7450980392156863, 0.6823529411764706, 0.8313725490196079, 1.0),
-                 (0.9921568627450981, 0.7529411764705882, 0.5254901960784314, 1.0),
-                 (1.0, 1.0, 0.6, 1.0),
-                 (0.2196078431372549, 0.4235294117647059, 0.6901960784313725, 1.0),
-                 (0.9411764705882353, 0.00784313725490196, 0.4980392156862745, 1.0),
-                 (0.7490196078431373, 0.3568627450980392, 0.09019607843137253, 1.0),
-                 (0.4, 0.4, 0.4, 1.0)]
+import holoviews as hv
+from holoviews import opts, dim
+from bokeh.io import output_file, show
+from bokeh.plotting import figure
+from bokeh.io import export_svg, export_png
+from bokeh.layouts import gridplot
+from scipy.sparse import csc_matrix
+
+hv.extension('bokeh')
+hv.output(size=200)
+
+import math
+from matplotlib.cm import hsv
+
+def generate_colormap(number_of_distinct_colors, number_of_shades = 7):
+#     https://stackoverflow.com/questions/42697933/colormap-with-maximum-distinguishable-colours
+    number_of_distinct_colors_with_multiply_of_shades = int(math.ceil(number_of_distinct_colors \
+            / number_of_shades) * number_of_shades)
+
+    linearly_distributed_nums = np.arange(number_of_distinct_colors_with_multiply_of_shades) / \
+            number_of_distinct_colors_with_multiply_of_shades
+    arr_by_shade_rows = linearly_distributed_nums.reshape(number_of_shades, number_of_distinct_colors_with_multiply_of_shades // number_of_shades)
+    arr_by_shade_columns = arr_by_shade_rows.T
+    number_of_partitions = arr_by_shade_columns.shape[0]
+    nums_distributed_like_rising_saw = arr_by_shade_columns.reshape(-1)
+    initial_cm = hsv(nums_distributed_like_rising_saw)
+    lower_partitions_half = number_of_partitions // 2
+    upper_partitions_half = number_of_partitions - lower_partitions_half
+    lower_half = lower_partitions_half * number_of_shades
+    for i in range(3):
+        initial_cm[0:lower_half, i] *= np.arange(0.2, 1, 0.8/lower_half)
+    for i in range(3):
+        for j in range(upper_partitions_half):
+            modifier = np.ones(number_of_shades) - initial_cm[lower_half + j * number_of_shades: lower_half + (j + 1) * number_of_shades, i]
+            modifier = j * modifier / upper_partitions_half
+            initial_cm[lower_half + j * number_of_shades: lower_half + (j + 1) * number_of_shades, i] += modifier
+    initial_cm = initial_cm[:,:3] * 255
+    initial_cm = initial_cm.astype(int)
+    initial_cm = np.array(['#%02x%02x%02x' % tuple(initial_cm[i]) for i in range(len(initial_cm))])
+    return initial_cm
+
+def ligand_ct(adata, pair):
+    ct_L = adata.uns['local_stat']['local_I'][:,adata.uns['selected_spots'].index==pair] * adata.obs
+    return ct_L
+
+def receptor_ct(adata, pair):
+    ct_R = adata.uns['local_stat']['local_I_R'][:,adata.uns['selected_spots'].index==pair] * adata.obs
+    return ct_R
+
+def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, ncol=2, save=None):
+    file_format = save.split('.')[-1]
+    if color_dic is None:
+        ct = adata.obs.columns.sort_values()
+        l = len(ct)
+        gen_col = generate_colormap(l)[:l]
+        color_dic = {ct[i]: gen_col[i] for i in range(len(ct))}
+    ls = []
+    #     if type(min_link) != list:
+    #         min_link = np.repeat(min_link, len(pairs))
+    if type(min_quantile) is float:
+        min_quantile = np.repeat(min_quantile, len(pairs))
+    for i, pair in enumerate(pairs):
+        if title is None:
+            t = pair
+        type_interaction = adata.uns['geneInter'].loc[pair, 'annotation']
+        if type_interaction == 'Secreted Signaling':
+            w = adata.obsp['weight']
+        else:
+            w = adata.obsp['nearest_neighbors']
+
+        ct_L = ligand_ct(adata, pair)
+        ct_R = receptor_ct(adata, pair)
+
+        sparse_ct_sum = [[(csc_matrix(w).multiply(ct_L[n1].values).T.multiply(ct_R[n2].values)).sum() \
+                          for n1 in ct_L.columns] for n2 in ct_R.columns]
+        sparse_ct_sum = np.array(sparse_ct_sum)
+
+        Links = pd.DataFrame({'source': np.tile(ct_L.columns, ct_R.shape[1]),
+                              'target': np.repeat(ct_R.columns, ct_L.shape[1]),
+                              'value': sparse_ct_sum.reshape(1, -1)[0]})
+
+        Nodes = pd.DataFrame({'name': ct_L.columns})
+        Nodes.index = Nodes.name.values
+        nodes = hv.Dataset(Nodes, 'index')
+
+        chord = hv.Chord((Links.loc[Links.value > 0], nodes)).select(  # Links.value>min_link[i]
+            value=(Links.value.quantile(min_quantile[i]), None))
+        cmap_ct = pd.Series(color_dic)[chord.nodes.data['index'].values].values.tolist()
+        adata.uns[pair + '_link'] = Links
+        chord.opts(
+            opts.Chord(  # cmap='Category20',
+                edge_cmap=cmap_ct,
+                edge_color=dim('source').str(),
+                labels='name', node_color=dim('index').str(),
+                node_cmap=cmap_ct,
+                title=t))
+        ls.append(chord)
+
+    ar = np.array([hv.render(fig) for fig in ls])
+    for n in ar:
+        n.output_backend = "svg"
+    plots = ar.reshape(-1, ncol).tolist()
+    grid = gridplot(plots)
+    if file_format == 'svg':
+        export_svg(grid, filename=save)
+    elif file_format == 'png':
+        export_png(grid, filename=save)
+    show(grid)
+    return grid
+
+def chord_LR(adata, senders, receivers, color_dic=None,
+             title=None, min_quantile=0.5, ncol=2, save=None):
+    file_format = save.split('.')[-1]
+    if color_dic is None:
+        subgeneInter = adata.uns['geneInter'].loc[adata.uns['selected_spots'].index]
+        type_interaction = subgeneInter.annotation
+        n_short_lri = (type_interaction!='Secreted Signaling').sum()
+        ligand_all = subgeneInter.interaction_name_2.str.split('-').str[0]
+        receptor_all = subgeneInter.interaction_name_2.str.split('-').str[1]
+        genes_all = np.hstack((ligand_all, receptor_all))
+        genes_all = pd.Series(genes_all).drop_duplicates().values
+        l = len(genes_all)
+        gen_col = generate_colormap(l)[:l]
+        color_dic = {genes_all[i]: gen_col[i] for i in range(l)}
+
+    ls = []
+    #     if type(min_link) != list:
+    #         min_link = np.repeat(min_link, len(pairs))
+    if type(min_quantile) is float:
+        min_quantile = np.repeat(min_quantile, len(senders))
+
+    for i, (sender, receiver) in enumerate(zip(senders, receivers)):
+        if title is None:
+            t = ('_').join((sender, receiver))
+
+        ct_L = adata.obs.loc[:,sender].values * adata.uns['local_stat']['local_I'].T
+        ct_R = adata.obs.loc[:,receiver].values * adata.uns['local_stat']['local_I_R'].T
+
+        sparse_ct_sum = np.hstack(([csc_matrix(adata.obsp['nearest_neighbors']).multiply(n1).T.multiply(n2).sum() \
+                      for n1,n2 in zip(ct_L[:n_short_lri], ct_R[:n_short_lri])],
+                                  [csc_matrix(adata.obsp['weight']).multiply(n1).T.multiply(n2).sum() \
+                      for n1,n2 in zip(ct_L[n_short_lri:], ct_R[n_short_lri:])]))
+
+
+        Links = pd.DataFrame({'source':ligand_all,
+                    'target':receptor_all,
+                  'value': sparse_ct_sum})
+        adata.uns[t+'_link'] = Links
+
+        Nodes = pd.DataFrame({'name': genes_all.astype(str)})
+        Nodes.index = Nodes.name.values
+
+        Nodes=Nodes.drop_duplicates()
+
+        nodes = hv.Dataset(Nodes, 'index')
+
+        chord = hv.Chord((Links.loc[Links.value>0], nodes)).select(
+            value=(Links.value.quantile(min_quantile).drop_duplicates().values, None))
+
+        cmap_ct = pd.Series(color_dic)[chord.nodes.data['index'].values].values.tolist()
+
+        chord.opts(
+            opts.Chord(#cmap='Category20',
+                        edge_cmap=cmap_ct,
+                       edge_color=dim('source').str(),
+                       labels='name', node_color=dim('index').str(),
+                       node_cmap=cmap_ct,
+                       title = 'Undifferentiated_Colonocytes'))
+        ls.append(chord)
+
+    ar = np.array([hv.render(fig) for fig in ls])
+    for n in ar:
+        n.output_backend="svg"
+    plots = ar.reshape(-1,ncol).tolist()
+    grid = gridplot(plots)
+
+    if file_format=='svg':
+        export_svg(grid, filename=save)
+    elif file_format=='png':
+        export_png(grid, filename=save)
+    show(grid)
+    return grid
+
+def chord_celltype_allpairs(adata, color_dic=None,
+                             min_quantile=0.9, ncol=3, save=None):
+    file_format = save.split('.')[-1]
+    if color_dic is None:
+        ct = adata.obs.columns.sort_values()
+        l = len(ct)
+        gen_col = generate_colormap(l)[:l]
+        color_dic = {ct[i]: gen_col[i] for i in range(len(ct))}
+
+    long_pairs = adata.uns['geneInter'][adata.uns['geneInter'].annotation == \
+                    'Secreted Signaling'].index.intersection(adata.uns['selected_spots'].index)
+    short_pairs = adata.uns['geneInter'][adata.uns['geneInter'].annotation != \
+                        'Secreted Signaling'].index.intersection(adata.uns['selected_spots'].index)
+    ls=[]
+
+    for by_range,pairs,w in zip(['long', 'short'],
+                    [long_pairs, short_pairs],
+                 [adata.obsp['weight'], adata.obsp['nearest_neighbors']]):
+        sparse_ct_sum = [[[(csc_matrix(w).multiply(ligand_ct(adata, p)[n1].values).T.multiply(receptor_ct(adata, p)[n2].values)).sum() \
+           for n1 in ct] for n2 in ct] for p in pairs]
+        sparse_ct_sum = np.array(sparse_ct_sum).sum(0)
+
+        Links = pd.DataFrame({'source':np.tile(ct, l),
+                    'target':np.repeat(ct, l),
+                  'value': sparse_ct_sum.reshape(1,-1)[0]})
+        adata.uns[by_range]=Links
+
+        Nodes = pd.DataFrame({'name': ct})
+        Nodes.index = Nodes.name.values
+        nodes = hv.Dataset(Nodes, 'index')
+
+        chord = hv.Chord((Links.loc[Links.value>0], nodes)).select( #Links.value>min_link[i]
+            value=(Links.value.quantile(min_quantile), None))
+        cmap_ct = pd.Series(color_dic)[chord.nodes.data['index'].values].values.tolist()
+        chord.opts(
+            opts.Chord(#cmap='Category20',
+                        edge_cmap=cmap_ct,
+                       edge_color=dim('source').str(),
+                       labels='name', node_color=dim('index').str(),
+                       node_cmap=cmap_ct,
+                       title = by_range))
+        ls.append(chord)
+
+    value = (len(long_pairs) * adata.uns['long'].value + len(short_pairs) * adata.uns['short'].value)/ \
+            (len(long_pairs) + len(short_pairs))
+    Links.value = value
+    chord = hv.Chord((Links.loc[Links.value>0], nodes)).select( #Links.value>min_link[i]
+            value=(Links.value.quantile(min_quantile), None))
+    cmap_ct = pd.Series(color_dic)[chord.nodes.data['index'].values].values.tolist()
+    chord.opts(
+        opts.Chord(#cmap='Category20',
+                    edge_cmap=cmap_ct,
+                   edge_color=dim('source').str(),
+                   labels='name', node_color=dim('index').str(),
+                   node_cmap=cmap_ct,
+                   title = 'Cell_type_interactions_between_all_identified_pairs'))
+    ls.append(chord)
+
+    ar = np.array([hv.render(fig) for fig in ls])
+    for n in ar:
+        n.output_backend="svg"
+    plots = ar.reshape(-1,ncol).tolist()
+    grid = gridplot(plots)
+
+    if file_format=='svg':
+        export_svg(grid, filename=save)
+    elif file_format=='png':
+        export_png(grid, filename=save)
+    show(grid)
+
 
 def plt_util(title):
     plt.xticks([])
@@ -21,16 +266,17 @@ def plt_util(title):
     plt.title(title)
     plt.colorbar()
 
+
 def plot_selected_pair(sample, pair, spots, selected_ind, figsize, cmap, cmap_l, cmap_r, **kwargs):
     i = pd.Series(selected_ind == pair).idxmax()
-    L = sample.uns['ligand'][sample.uns['ind'] == pair][0]
-    R = sample.uns['receptor'][sample.uns['ind'] == pair][0]
+    L = sample.uns['ligand'].loc[pair].dropna().values
+    R = sample.uns['receptor'].loc[pair].dropna().values
     l1, l2 = len(L), len(R)
     plt.figure(figsize=figsize)
     plt.subplot(1, 5, 1)
     plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=spots.loc[pair], cmap=cmap,
                 vmax=1, **kwargs)
-    plt_util('Moran: ' + str(sample.n_spots[i]) + ' spots')
+    plt_util('Moran: ' + str(sample.uns['local_stat']['n_spots'][pair]) + ' spots')
     for l in range(l1):
         plt.subplot(1, 5, 2 + l)
         plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,L[l]].X,
@@ -55,10 +301,10 @@ def plot_pairs(sample, pairs_to_plot, pdf=None, figsize=(35, 5),
     :param cmap_r: cmap for selected receptor. If None, no subplot for receptor expression
     :return:
     """
-    if sample.local_method == 'z-score':
+    if sample.uns['local_stat']['local_method'] == 'z-score':
         selected_ind = sample.uns['local_z_p'].index
         spots = 1 - sample.uns['local_z_p']
-    if sample.local_method == 'permutation':
+    if sample.uns['local_stat']['local_method'] == 'permutation':
         selected_ind = sample.uns['local_perm_p'].index
         spots = 1 - sample.uns['local_perm_p']
     if pdf != None:
@@ -265,14 +511,16 @@ def global_plot(sample, pairs=None, figsize=(3,4), **kwarg):
     :param kwarg: plt.scatter arguments
     :return: ax: matplotlib Axes.
     """
+    if pairs is not None:
+        color_codes = generate_colormap(max(10, len(pairs)+2))[2:]
     fig = plt.figure(figsize=figsize)
     ax = plt.axes()
-    plt.scatter(np.log1p(sample.uns['global_I']), -np.log1p(sample.uns['global_res.perm_pval']),
-                c=sample.uns['global_res.selected'], **kwarg)
+    plt.scatter(np.log1p(sample.uns['global_I']), -np.log1p(sample.uns['global_res'].perm_pval),
+                c=sample.uns['global_res'].selected, **kwarg)
     if pairs!=None:
         for i,pair in enumerate(pairs):
             plt.scatter(np.log1p(sample.uns['global_I'])[sample.uns['ligand'].index==pair],
-                        -np.log1p(sample.uns['global_res.perm_pval'])[sample.uns['ind']==pair],
+                        -np.log1p(sample.uns['global_res'].perm_pval)[sample.uns['ligand'].index==pair],
                         c=color_codes[i])
     plt.xlabel('log1p Global I')
     plt.ylabel('-log1p(pval)')

@@ -31,7 +31,7 @@ from itertools import zip_longest
     #     adata.gene_names = rawcounts.columns
     #     adata.logcounts = adata.logcounts.reindex(index=adata.spatialcoord.index)
 
-def weight_matrix(adata, l, cutoff=None, n_neighbors=None, single_cell=False):
+def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6, single_cell=False):
     """
     compute weight matrix based on radial basis kernel.
     cutoff & n_neighbors are two alternative options to \
@@ -49,20 +49,30 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, single_cell=False):
     rbf_d = np.exp(-pdist / (2 * l ** 2))  # RBF Distance
     if rbf_d.shape[0] > 1000:
         rbf_d = rbf_d.astype(np.float16)
+
+    nnbrs = NearestNeighbors(n_nearest_neighbors, algorithm='ball_tree').fit(rbf_d)
+    knn0 = nnbrs.kneighbors_graph(rbf_d).toarray()
+    rbf_d0 = rbf_d * knn0
+
     if cutoff:
         rbf_d[rbf_d < cutoff] = 0
+
     elif n_neighbors:
         nbrs = NearestNeighbors(n_neighbors, algorithm='ball_tree').fit(rbf_d)
         knn = nbrs.kneighbors_graph(rbf_d).toarray()
         rbf_d = rbf_d * knn
+
     if single_cell:
         np.fill_diagonal(rbf_d, 0)
+        np.fill_diagonal(rbf_d0, 0)
     else:
         pass
+
     adata.obsp['weight'] = rbf_d * adata.shape[0] / rbf_d.sum()
+    adata.obsp['nearest_neighbors'] = rbf_d0 * adata.shape[0] / rbf_d0.sum()
     return
 
-def extract_lr(adata, species, min_cell=0):
+def extract_lr(adata, species, mean='algebra', min_cell=0):
     """
         find overlapping LRs from CellChatDB
     :param species: only 'human' or 'mouse' is supported
@@ -70,6 +80,9 @@ def extract_lr(adata, species, min_cell=0):
     respectively.
     :return: ind, ligand, receptor for further selection
     """
+    if mean=='geometric':
+        from scipy.stats.mstats import gmean
+    adata.uns['mean'] = mean
     if species == 'mouse':
         geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
         comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
@@ -79,6 +92,7 @@ def extract_lr(adata, species, min_cell=0):
         comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
     else:
         raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
+    geneInter = geneInter.sort_values('annotation')
     ligand = geneInter.ligand.values
     receptor = geneInter.receptor.values
     t = []
@@ -91,8 +105,14 @@ def extract_lr(adata, species, min_cell=0):
             else:
                 n[i] = pd.Series(l).values[pd.Series(l).isin(adata.var_names)]
         if (len(ligand[i]) > 0) * (len(receptor[i]) > 0):
-            if (sum(adata[:, ligand[i]].X.mean(axis=1) > 0) >= min_cell) * \
-                    (sum(adata[:, receptor[i]].X.mean(axis=1) > 0) >= min_cell):
+            if mean=='geometric':
+                meanL = gmean(adata[:, ligand[i]].X, axis=1)
+                meanR = gmean(adata[:, receptor[i]].X, axis=1)
+            else:
+                meanL = adata[:, ligand[i]].X.mean(axis=1)
+                meanR = adata[:, receptor[i]].X.mean(axis=1)
+            if (sum(meanL > 0) >= min_cell) * \
+                    (sum(meanR > 0) >= min_cell):
                 t.append(True)
             else:
                 t.append(False)
@@ -132,7 +152,7 @@ def spatialdm_global(adata, n_perm=1000, specified_ind=None, method='z-score', n
     adata.uns['global_stat'] = {}
     if method in ['z-score', 'both']:
         adata.uns['global_stat']['z']={}
-        adata.uns['global_stat']['z']['st'] = var_compute(adata) ** (1 / 2)
+        adata.uns['global_stat']['z']['st'] = globle_st_compute(adata)
         adata.uns['global_stat']['z']['z'] = np.zeros(total_len)
         adata.uns['global_stat']['z']['z_p'] = np.zeros(total_len)
     if method in ['both', 'permutation']:
@@ -200,7 +220,15 @@ def spatialdm_local(adata, n_perm=1000, method='z-score', specified_ind=None,
     ligand = adata.uns['ligand'].loc[specified_ind]
     receptor = adata.uns['receptor'].loc[specified_ind]
     ind = ligand.index
-    # logcounts = adata.rawcounts
+    adata.uns['local_stat']['local_I'] = np.zeros((adata.shape[0], len(ind)))
+    adata.uns['local_stat']['local_I_R'] = np.zeros((adata.shape[0], len(ind)))
+    N = adata.shape[0]
+    if method in ['both', 'permutation']:
+        adata.uns['local_stat']['local_permI'] = np.zeros((len(ind), n_perm, N))
+        adata.uns['local_stat']['local_permI_R'] = np.zeros((len(ind), n_perm, N))
+    if method in ['both', 'z-score']:
+        adata.uns['local_z'] = np.zeros((len(ind),adata.shape[0]))
+        adata.uns['local_z_p'] = np.zeros((len(ind),adata.shape[0]))
 
     ## different approaches
     with threadpool_limits(limits=nproc, user_api='blas'):
