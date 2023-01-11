@@ -6,8 +6,7 @@ from statsmodels.stats.multitest import fdrcorrection
 from scipy import spatial
 # import json
 from threadpoolctl import threadpool_limits
-# from scipy.sparse import csc_matrix, save_npz, load_npz
-from utils import * #TODO .utils
+from .utils import *
 from itertools import zip_longest
 import anndata as ann
 
