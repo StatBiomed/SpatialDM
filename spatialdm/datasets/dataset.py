@@ -9,6 +9,13 @@ _mel = AMetadata(
     url="https://ndownloader.figshare.com/files/36619200",
 )
 
+SVZ = AMetadata(
+    name="SVZ",
+    doc_header="SVZ dataset from `Eng et al <https://doi.org/10.1038/s41586-019-1049-y>`__.",
+    shape=(281, 10000),
+    url="https://ndownloader.figshare.com/files/38756010",
+)
+
 _A1 = AMetadata(
     name="A1",
     doc_header="Adult colon rep 1 from Corbett, et al. <https://doi.org/10.1016/j.cell.2020.12.016>`__.",

@@ -73,10 +73,12 @@ def concat_obj(samples, names, species, method='z-score', fdr=False):
 
 def differential_test(cdata, subset, conditions):
     """
-    Test whether each pair is differential among 2 or more conditions
+    Test whether each pair is differential among 2 or more conditions by likehood ratio
     :param subset: list of concat_obj names to perform differential test on.
-    :param conditions:
+    :param conditions: numeric label distinguishing conditions for each selected sample from the subset
     :return:
+        cdata.uns['p_val']: dataframe containing differential p-values
+        cdata.uns['diff_fdr']: dataframe containing fdr corrected differential p-values
     """
     if cdata.uns['method'] == 'z-score':
         import statsmodels.api as sm
@@ -107,14 +109,23 @@ def differential_test(cdata, subset, conditions):
             LR_statistic[i] = -2 * (reduced_ll - full_ll)
             cdata.uns['p_val'][i] = scipy.stats.chi2.sf(LR_statistic[i], 1)
 
-        cdata.uns['diff'] = cdata.uns['zscore_df'].loc[:, np.array(subset)[conditions == 1]].mean(1).values - \
-                    cdata.uns['zscore_df'].loc[:, np.array(subset)[conditions == 0]].mean(1).values
+        cdata.uns['diff'] = cdata.uns['zscore_df'].loc[:, np.array(subset)[conditions == 1]].mean(1) - \
+                    cdata.uns['zscore_df'].loc[:, np.array(subset)[conditions == 0]].mean(1)
 
         cdata.uns['p_val'] = np.where(np.isnan(cdata.uns['p_val']), 1, cdata.uns['p_val'])
 
         cdata.uns['diff_fdr'] = fdrcorrection(cdata.uns['p_val'])[1]
 
 def group_differential_pairs(cdata, c1_name, c2_name, diff_quantile1=0.7, diff_quantile2=0.3, fdr_co=0.1):
+    '''
+    :param cdata: concatenated adata object
+    :param c1_name: (str) condition 1 name
+    :param c2_name: (str) condition 2 name
+    :param diff_quantile1: (float) quantile for highlighting
+    :param diff_quantile2: (float)
+    :param fdr_co: (float) fdr cutoff
+    :return: specific pairs for c1 and c2
+    '''
     _range = np.arange(1, cdata.uns['n_sub'])
     cdata.uns['q1'] = np.quantile(cdata.uns['diff'], diff_quantile1)
     cdata.uns['q2'] = np.quantile(cdata.uns['diff'], diff_quantile2)

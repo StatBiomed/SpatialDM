@@ -6,7 +6,8 @@ from sklearn import linear_model
 import scipy.stats as stats
 import seaborn as sns
 #from utils import compute_pathway
-from .utils import *
+# from .utils import *
+from utils import * #TODO .utils
 import holoviews as hv
 from holoviews import opts, dim
 from bokeh.io import output_file, show
@@ -22,7 +23,12 @@ import math
 from matplotlib.cm import hsv
 
 def generate_colormap(number_of_distinct_colors, number_of_shades = 7):
-#     https://stackoverflow.com/questions/42697933/colormap-with-maximum-distinguishable-colours
+    '''
+    Ref: https://stackoverflow.com/questions/42697933/colormap-with-maximum-distinguishable-colours
+    :param number_of_distinct_colors:
+    :param number_of_shades:
+    :return: n distinct colors
+    '''
     number_of_distinct_colors_with_multiply_of_shades = int(math.ceil(number_of_distinct_colors \
             / number_of_shades) * number_of_shades)
 
@@ -56,16 +62,28 @@ def receptor_ct(adata, pair):
     ct_R = adata.uns['local_stat']['local_I_R'][:,adata.uns['selected_spots'].index==pair] * adata.obs
     return ct_R
 
-def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, ncol=2, save=None):
-    file_format = save.split('.')[-1]
+def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, ncol=1, save=None):
+    """
+    Plot aggregated cell type weights given a list of interaction pairs
+    :param adata: Anndata object
+    :param pairs: List of interactions. Must be consistent with adata.uns['selected_spots'].index
+    :param color_dic: dict containing specified colors for each cell type
+    :param title: default to names provided in pairs
+    :param min_quantile: Minimum edge numbers (in quantile) to show in the plot, default to 0.5.
+    :param ncol: number of columns if more than one pair will be plotted.
+    :param save: 'svg' or 'png' or None
+    :return: Chord diagram showing enriched cell types. Edge color indicates source cell types.
+    """
+    if save is not None:
+        file_format = save.split('.')[-1]
     if color_dic is None:
         ct = adata.obs.columns.sort_values()
         l = len(ct)
-        gen_col = generate_colormap(l)[:l]
+        l0 = max(l, 10)
+        gen_col = generate_colormap(l0)[:l]
         color_dic = {ct[i]: gen_col[i] for i in range(len(ct))}
     ls = []
-    #     if type(min_link) != list:
-    #         min_link = np.repeat(min_link, len(pairs))
+
     if type(min_quantile) is float:
         min_quantile = np.repeat(min_quantile, len(pairs))
     for i, pair in enumerate(pairs):
@@ -118,8 +136,21 @@ def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, n
     return grid
 
 def chord_LR(adata, senders, receivers, color_dic=None,
-             title=None, min_quantile=0.5, ncol=2, save=None):
-    file_format = save.split('.')[-1]
+             title=None, min_quantile=0.5, ncol=1, save=None):
+    """
+        Plot aggregated interaction scores given a list of sender-receiver combinations.
+        :param adata: Anndata object
+        :param senders: (list) Sender cell types
+        :param senders: (list) Receiver cell types. Must be of the same length with sender cell types.
+        :param color_dic: dict containing specified colors for each sender-receiver combination.
+        :param title: default to sender_receiver
+        :param min_quantile: Minimum edge numbers (in quantile) to show in the plot, default to 0.5.
+        :param ncol: number of columns if more than one combination will be plotted.
+        :param save: 'svg' or 'png' or None
+        :return: Chord diagram showing enriched interactions. Edge color indicates ligand.
+    """
+    if save is not None:
+        file_format = save.split('.')[-1]
     if color_dic is None:
         subgeneInter = adata.uns['geneInter'].loc[adata.uns['selected_spots'].index]
         type_interaction = subgeneInter.annotation
@@ -129,12 +160,11 @@ def chord_LR(adata, senders, receivers, color_dic=None,
         genes_all = np.hstack((ligand_all, receptor_all))
         genes_all = pd.Series(genes_all).drop_duplicates().values
         l = len(genes_all)
-        gen_col = generate_colormap(l)[:l]
+        l0 = max(l, 10)
+        gen_col = generate_colormap(l0)[:l]
         color_dic = {genes_all[i]: gen_col[i] for i in range(l)}
 
     ls = []
-    #     if type(min_link) != list:
-    #         min_link = np.repeat(min_link, len(pairs))
     if type(min_quantile) is float:
         min_quantile = np.repeat(min_quantile, len(senders))
 
@@ -192,11 +222,25 @@ def chord_LR(adata, senders, receivers, color_dic=None,
 
 def chord_celltype_allpairs(adata, color_dic=None,
                              min_quantile=0.9, ncol=3, save=None):
-    file_format = save.split('.')[-1]
+    """
+       Plot aggregated cell type weights for all pairs in adata.uns['selected_spots']
+       :param adata: Anndata object
+       :param pairs: List of interactions. Must be consistent with adata.uns['selected_spots'].index
+       :param color_dic: dict containing specified colors for each cell type
+       :param title: default to names provided in pairs
+       :param min_quantile: Minimum edge numbers (in quantile) to show in the plot, default to 0.5.
+       :param ncol: number of columns if more than one pair will be plotted.
+       :param save: 'svg' or 'png' or None
+       :return: 3 chord diagrams showing enriched cell types, one for adjacent signaling, \
+       one for secreted signaling, and the other for the aggregated.
+       """
+    if save is not None:
+        file_format = save.split('.')[-1]
     if color_dic is None:
         ct = adata.obs.columns.sort_values()
         l = len(ct)
-        gen_col = generate_colormap(l)[:l]
+        l0 = max(l, 10)
+        gen_col = generate_colormap(l0)[:l]
         color_dic = {ct[i]: gen_col[i] for i in range(len(ct))}
 
     long_pairs = adata.uns['geneInter'][adata.uns['geneInter'].annotation == \
@@ -293,6 +337,7 @@ def plot_pairs(sample, pairs_to_plot, pdf=None, figsize=(35, 5),
                cmap='Greens', cmap_l='coolwarm', cmap_r='coolwarm', **kwargs):
     """
     plot selected spots as well as LR expression.
+    :param sample: AnnData object.
     :param pairs_to_plot: list or arrays. pair name(s), should be from spatialdm_local pairs .
     :param pdf: str. pdf file prefix. save plots in a pdf file.
     :param figsize: figsize for each pair. Default to (35, 5).
@@ -300,7 +345,7 @@ def plot_pairs(sample, pairs_to_plot, pdf=None, figsize=(35, 5),
     :param cmap: cmap for selected local spots.
     :param cmap_l: cmap for selected ligand. If None, no subplot for ligand expression.
     :param cmap_r: cmap for selected receptor. If None, no subplot for receptor expression
-    :return:
+    :return: subplots of spatial scatter plots, 1 for local Moran p-values, others for the original expression values
     """
     if sample.uns['local_stat']['local_method'] == 'z-score':
         selected_ind = sample.uns['local_z_p'].index
@@ -351,48 +396,26 @@ def make_grid_spec(
         ax.set_yticks([])
         return ax.figure, ax.get_subplotspec().subgridspec(nrows, ncols, **kw)
 
-def dot_path(adata, uns_key=None, dic=None, cut_off=1, groups=None, markersize = 50,
-             legend_size=(8, 3), figsize=(6,8),
-             **kwargs):
-    """
-    plot pathway enrichment dotplot.
-    :param sample: spatialdm obj
-    :param name: str. Either 1) same to one of path_name from compute_pathway;
-    2) 'P1', 'P2' for SpatialDE results
-    :param pdf: str. save pdf with the specified filename
-    :param figsize: figsize
-    :return: ax: matplotlib Axes
-    """
-    plt.figure(figsize=figsize)
-    if uns_key is not None:
-        dic = {uns_key: adata.uns[uns_key]}
-    pathway_res = compute_pathway(adata, dic=dic)
-    pathway_res = pathway_res[pathway_res.selected >= cut_off]
-    if groups is not None:
-        pathway_res = pathway_res.loc[pathway_res.name.isin(groups)]
-    n_subplot = len(pathway_res.name.unique())
+def dot(pathway_res, figsize, markersize, pdf):
     for i, name in enumerate(pathway_res.name.unique()):
-        plt.figure(figsize=figsize)
-        plt.subplot((n_subplot + 1) // 2, 2, i + 1)
+        fig, legend_gs = make_grid_spec(figsize,
+                                        nrows=2, ncols=1,
+                                        height_ratios=(4, 1))
+        dotplot = fig.add_subplot(legend_gs[0])
         result1 = pathway_res.loc[pathway_res.name == name]
         result1 = result1.sort_values('selected', ascending=False)
         cts = result1.selected
         perc = result1.selected / result1.pathway_size
         value = -np.log10(result1.loc[:, 'fisher_p'].values)
         size = value * markersize
-        plt.scatter(result1.selected.values, result1.index, c=perc.loc[result1.index].values,
-                    s=size, cmap='Reds')
-        plt.xlabel('Number of pairs')
-        plt.xticks(np.arange(0, max(result1.selected.values) + 2))
-        plt.tick_params(axis='y', labelsize=10)
-        plt.title(name)
-        plt.colorbar(location='bottom', label='percentage of pairs out of CellChatDB')
-        plt.tight_layout()
-
-        fig, legend_gs = make_grid_spec(
-            legend_size,
-            nrows=4, ncols=1
-        )
+        im = dotplot.scatter(result1.selected.values, result1.index, c=perc.loc[result1.index].values,
+                             s=size, cmap='Reds')
+        dotplot.set_xlabel('Number of pairs')
+        dotplot.set_xticks(np.arange(0, max(result1.selected.values) + 2))
+        dotplot.tick_params(axis='y', labelsize=10)
+        dotplot.set_title(name)
+        plt.colorbar(im, location='bottom', label='percentage of pairs out of CellChatDB')
+        #                 dotplot.tight_layout()
 
         # plot size bar
         size_uniq = np.quantile(size, np.arange(1, 0, -0.1))
@@ -411,7 +434,8 @@ def dot_path(adata, uns_key=None, dic=None, cut_off=1, groups=None, markersize =
         # labels = [
         #     "{}".format(np.round((x * 100), decimals=0).astype(int)) for x in size_range
         # ]
-        size_legend_ax.set_xticklabels(np.round(np.exp(-value_uniq), 3), fontsize='small')
+        size_legend_ax.set_xticklabels(np.round(np.exp(-value_uniq), 3),
+                                       rotation=60, fontsize='small')
 
         # remove y ticks and labels
         size_legend_ax.tick_params(
@@ -430,13 +454,50 @@ def dot_path(adata, uns_key=None, dic=None, cut_off=1, groups=None, markersize =
 
         xmin, xmax = size_legend_ax.get_xlim()
         size_legend_ax.set_xlim(xmin - 0.15, xmax + 0.5)
+        if pdf != None:
+            pdf.savefig()
+
+
+def dot_path(adata, uns_key=None, dic=None, cut_off=1, groups=None, markersize=50,
+             figsize=(6, 8), pdf=None,
+             **kwargs):
+    """
+    Either input a dict containing lists of interactions, or specify a dict key in adata.uns
+    :param sample: AnnData object.
+    :param uns_key: a dict key in adata.uns
+    :param dic: a dict containing 1 or more list(s) of interactions
+    :param cut_off: Minimum number of spots to be plotted.
+    :param groups: subgroups from all dict keys.
+    :param markersize:
+    :param figsize:
+    :param pdf: export pdf under your current directory
+    :param kwargs:
+    :return:
+    """
+    # plt.figure(figsize=figsize)
+
+    if uns_key is not None:
+        dic = {uns_key: adata.uns[uns_key]}
+    pathway_res = compute_pathway(adata, dic=dic)
+    pathway_res = pathway_res[pathway_res.selected >= cut_off]
+    if groups is not None:
+        pathway_res = pathway_res.loc[pathway_res.name.isin(groups)]
+    n_subplot = len(pathway_res.name.unique())
+    if pdf != None:
+        with PdfPages(pdf + '.pdf') as pdf:
+            dot(pathway_res, figsize, markersize, pdf)
+            plt.show()
+            plt.close()
+    else:
+        dot(pathway_res, figsize, markersize, pdf)
+
 
 
 def corr_plot(x, y, max_num=10000, outlier=0.01, line_on=True, method='spearman',
               legend_on=True, size=30, dot_color=None, outlier_color="r",
               alpha=0.8, color_rate=10, corr_on=None):
     """
-
+    Please see hilearn package for more details
     x: `array_like`, (1, )
         Values on x-axis
     y: `array_like`, (1, )
@@ -501,12 +562,12 @@ def corr_plot(x, y, max_num=10000, outlier=0.01, line_on=True, method='spearman'
     if legend_on or corr_on:
         plt.legend(loc="best", fancybox=True, ncol=1)
 
-def global_plot(sample, pairs=None, figsize=(3,4), **kwarg):
+def global_plot(sample, pairs=None, figsize=(3,4),loc=2, **kwarg):
     """
     overview of global selected pairs for a SpatialDM obj
-    :param sample: SpatialDM obj
+    :param sample: AnnData object
     :param pairs: list
-    list of pairs to be highlighted in the volcano plot, e.g. ['SPP1_CD44'] or ['SPP1_CD44','ANGPTL4_SDC2']
+    list of pairs to be highlighted in the scatter plot, e.g. ['SPP1_CD44'] or ['SPP1_CD44','ANGPTL4_SDC2']
     :param figsize: tuple
     default to (3,4)
     :param kwarg: plt.scatter arguments
@@ -516,7 +577,11 @@ def global_plot(sample, pairs=None, figsize=(3,4), **kwarg):
         color_codes = generate_colormap(max(10, len(pairs)+2))[2:]
     fig = plt.figure(figsize=figsize)
     ax = plt.axes()
-    plt.scatter(np.log1p(sample.uns['global_I']), -np.log1p(sample.uns['global_res'].perm_pval),
+    if sample.uns['global_stat']['method'] == 'permutation':
+        p = 'perm_pval'
+    elif sample.uns['global_stat']['method'] == 'z-score':
+        p = 'z_pval'
+    plt.scatter(np.log1p(sample.uns['global_I']), -np.log1p(sample.uns['global_res'][p]),
                 c=sample.uns['global_res'].selected, **kwarg)
     if pairs!=None:
         for i,pair in enumerate(pairs):
@@ -527,7 +592,7 @@ def global_plot(sample, pairs=None, figsize=(3,4), **kwarg):
     plt.ylabel('-log1p(pval)')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    plt.legend(np.hstack(([''], pairs)))
+    plt.legend(np.hstack(([''], pairs)), loc=loc)
 
 def differential_dendrogram(sample):
     _range = np.arange(1, sample.uns['n_sub'])
@@ -538,7 +603,7 @@ def differential_dendrogram(sample):
 def differential_volcano(sample, pairs=None, legend=None, xmax = 25, xmin = -20):
     """
     Volcano plot for a differential obj
-    :param sample: concatenated Spatial obj
+    :param sample: concatenated AnnData after running spatialdm separately
     :param pairs: list
     list of pairs to be highlighted in the volcano plot, e.g. ['SPP1_CD44'] or ['SPP1_CD44','ANGPTL4_SDC2']
     :param legend: list
@@ -549,6 +614,8 @@ def differential_volcano(sample, pairs=None, legend=None, xmax = 25, xmin = -20)
     min z-score difference
     :return: ax: matplotlib Axes.
     """
+    if pairs is not None:
+        color_codes = generate_colormap(max(10, len(pairs)+8))[8:]
     q1 = sample.uns['q1']
     q2 = sample.uns['q2']
     fdr_co = sample.uns['fdr_co']

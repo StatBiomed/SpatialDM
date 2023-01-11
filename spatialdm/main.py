@@ -4,46 +4,31 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from statsmodels.stats.multitest import fdrcorrection
 from scipy import spatial
-import json
+# import json
 from threadpoolctl import threadpool_limits
-from scipy.sparse import csc_matrix, save_npz, load_npz
-from .utils import * #TODO .utils
+# from scipy.sparse import csc_matrix, save_npz, load_npz
+from utils import * #TODO .utils
 from itertools import zip_longest
+import anndata as ann
 
-
-# class SpatialDM(object):
-#     """
-#     class SpatialDM(object)
-#     """
-    # def __init__(self, logcounts, rawcounts, spatialcoord):
-    #     """
-    #     load spatial data
-    #             Index names for logcounts, rawcounts and spatialcoord should be exactly the same
-    #     :param logcounts: exression matrix dataframe (logcounts): genes in columns,  spots in rows.
-    #     :param rawcounts: exression matrix dataframe (rawcounts): genes in columns,  spots in rows.
-    #     :param spatialcoord: spatial coordinate dataframe (spatialcoord): two columns named 'x' and 'y', spots in rows.
-    #     """
-    #     adata.logcounts = logcounts
-    #     adata.rawcounts = rawcounts
-    #     adata.spatialcoord = spatialcoord
-    #     adata.N = spatialcoord.shape[0]
-    #     adata.spot_names = spatialcoord.index
-    #     adata.gene_names = rawcounts.columns
-    #     adata.logcounts = adata.logcounts.reindex(index=adata.spatialcoord.index)
 
 def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6, single_cell=False):
     """
     compute weight matrix based on radial basis kernel.
-    cutoff & n_neighbors are two alternative options to \
-    make the matrix sparse
-    :param l: radial basis kernel parameter, need to be customized to restrain the range of signaling
-     before downstream processing.
-    :param cutoff: minimum weight to be kept from the rbf weight matrix. Weight below cutoff will be made zero
-    :param n_neighbors: number of neighbors per spot from the rbf weight matrix.
+    cutoff & n_neighbors are two alternative options to restrict signaling range.
+    :param l: radial basis kernel parameter, need to be customized for optimal weight gradient and \
+    to restrain the range of signaling before downstream processing.
+    :param cutoff: (for secreted signaling) minimum weight to be kept from the rbf weight matrix. \
+    Weight below cutoff will be made zero
+    :param n_neighbors: (for secreted signaling) number of neighbors per spot from the rbf weight matrix.
+    :param n_nearest_neighbors: (for adjacent signaling) number of neighbors per spot from the rbf \
+    weight matrix.
     Non-neighbors will be made 0
     :param single_cell: if single cell resolution, diagonal will be made 0.
-    :return: rbf_d weight matrix in obj attribute
+    :return: secreted signaling weight matrix: adata.obsp['weight'], \
+            and adjacent signaling weight matrix: adata.obsp['nearest_neighbors']
     """
+    adata.uns['single_cell'] = single_cell
     pdist = spatial.distance.pdist(adata.obsm['spatial'], 'sqeuclidean')
     pdist = spatial.distance.squareform(pdist)
     rbf_d = np.exp(-pdist / (2 * l ** 2))  # RBF Distance
@@ -74,11 +59,14 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
 
 def extract_lr(adata, species, mean='algebra', min_cell=0):
     """
-        find overlapping LRs from CellChatDB
-    :param species: only 'human' or 'mouse' is supported
-    :param min_cell: for each selected pair, the spots logcountsressing ligand or receptor should be larger than the min,
+    find overlapping LRs from CellChatDB
+    :param adata: AnnData object
+    :param species: support 'human', 'mouse' and 'zebrafish'
+    :param mean: 'algebra' (default) or 'geometric'
+    :param min_cell: for each selected pair, the spots expressing ligand or receptor should be larger than the min,
     respectively.
-    :return: ind, ligand, receptor for further selection
+    :return: ligand, receptor, geneInter (containing comprehensive info from CellChatDB) dataframes \
+            in adata.uns
     """
     if mean=='geometric':
         from scipy.stats.mstats import gmean
@@ -86,15 +74,20 @@ def extract_lr(adata, species, mean='algebra', min_cell=0):
     if species == 'mouse':
         geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
         comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
-
     elif species == 'human':
         geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638943', header=0, index_col=0)
         comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
+    elif species == 'zebrafish':
+        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/38756022', header=0, index_col=0)
+        comp = pd.read_csv('https://figshare.com/ndownloader/files/38756019', header=0, index_col=0)
     else:
         raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
     geneInter = geneInter.sort_values('annotation')
     ligand = geneInter.ligand.values
     receptor = geneInter.receptor.values
+    geneInter.pop('ligand')
+    geneInter.pop('receptor')
+
     t = []
     for i in range(len(ligand)):
         for n in [ligand, receptor]:
@@ -136,12 +129,12 @@ def spatialdm_global(adata, n_perm=1000, specified_ind=None, method='z-score', n
         global selection. 2 alternative methods can be specified.
     :param n_perm: number of times for shuffling receptor expression for a given pair, default to 1000.
     :param specified_ind: array containing queried indices for quick test/only run selected pair(s).
-    If not specified, selection will be done for all pairs
+    If not specified, selection will be done for all extracted pairs
     :param method: default to 'z-score' for computation efficiency.
         Alternatively, can specify 'permutation' or 'both'.
         Two approaches should generate consistent results in general.
     :param nproc: default to 1. Please decide based on your system.
-    :return: 'global_res' dataframe in obj attribute containing pair info and p-values
+    :return: 'global_res' dataframe in adata.uns containing pair info and Moran p-values
     """
     if type(specified_ind) == type(None):
         specified_ind = adata.uns['geneInter'].index.values  # default to all pairs
@@ -187,6 +180,7 @@ def sig_pairs(adata, method='z-score', fdr=True, threshold=0.1):
     :param threshold: 0-1. p-value or fdr cutoff to retain significant pairs. Default to 0.1.
     :return: 'selected' column in global_res containing whether or not a pair should be retained
     """
+    adata.uns['global_stat']['method'] = method
     if method == 'z-score':
         _p = adata.uns['global_res']['z_pval'].values
     elif method == 'permutation':
@@ -208,14 +202,14 @@ def spatialdm_local(adata, n_perm=1000, method='z-score', specified_ind=None,
     :param specified_ind: array containing queried indices in sample pair(s).
     If not specified, local selection will be done for all sig pairs
     :param nproc: default to 1.
-    :return: local p-value matrix in obj attribute.
+    :return: 'local_stat' & 'local_z_p' and/or 'local_perm_p' in adata.uns.
     """
     adata.uns['local_stat'] = {}
-
     if (int(n_perm / nproc) != (n_perm / nproc)):
         raise ValueError("n_perm should be divisible by nproc")
     if type(specified_ind) == type(None):
-        specified_ind = adata.uns['global_res'][adata.uns['global_res']['selected']].index  # default to global selected pairs
+        specified_ind = adata.uns['global_res'][
+            adata.uns['global_res']['selected']].index  # default to global selected pairs
     # total_len = len(specified_ind)
     ligand = adata.uns['ligand'].loc[specified_ind]
     receptor = adata.uns['receptor'].loc[specified_ind]
@@ -227,17 +221,13 @@ def spatialdm_local(adata, n_perm=1000, method='z-score', specified_ind=None,
         adata.uns['local_stat']['local_permI'] = np.zeros((len(ind), n_perm, N))
         adata.uns['local_stat']['local_permI_R'] = np.zeros((len(ind), n_perm, N))
     if method in ['both', 'z-score']:
-        adata.uns['local_z'] = np.zeros((len(ind),adata.shape[0]))
-        adata.uns['local_z_p'] = np.zeros((len(ind),adata.shape[0]))
+        adata.uns['local_z'] = np.zeros((len(ind), adata.shape[0]))
+        adata.uns['local_z_p'] = np.zeros((len(ind), adata.shape[0]))
 
     ## different approaches
     with threadpool_limits(limits=nproc, user_api='blas'):
         spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method)
 
-    # if method in ['z-score', 'boh']:
-    #         #     adata.local_z_p = pd.DataFrame(adata.ltocal_z_p, index=ind)
-    # if method in ['both', 'permutation']:
-    #     adata.local_perm_p = pd.DataFrame(adata.local_perm_p, index=ind)
 
 def sig_spots(adata, method='z-score', fdr=True, threshold=0.1):
     """
@@ -245,16 +235,17 @@ def sig_spots(adata, method='z-score', fdr=True, threshold=0.1):
     :param method: one of the methods from spatialdm_local, default to 'z-score'.
     :param fdr: True or False, default to True
     :param threshold: p-value or fdr cutoff to retain significant pairs. Default to 0.1.
-    :return: obj attributes 1) selected_spots: a binary matrix of which spots being selected for each pair;
-     2) n_spots: number of selected spots for each pair.
+    :return:  1) 'selected_spots' in adata.uns: a binary frame of which spots being selected for each pair;
+     2) 'n_spots' in adata.uns['local_stat']: number of selected spots for each pair.
     """
     if method == 'z-score':
         _p = adata.uns['local_z_p']
     if method == 'permutation':
         _p = adata.uns['local_perm_p']
-        if fdr:
-            _p = fdrcorrection(np.hstack(_p))[1].reshape(_p.shape)
-            adata.local_fdr = _p
+    if fdr:
+        _fdr = fdrcorrection(np.hstack(_p.values))[1].reshape(_p.shape)
+        _p.loc[:,:] = _fdr
+        adata.uns['local_stat']['local_fdr'] = _p
     adata.uns['selected_spots'] = (_p < threshold)
     adata.uns['local_stat']['n_spots'] = adata.uns['selected_spots'].sum(1)
     adata.uns['local_stat']['local_method'] = method
@@ -262,14 +253,21 @@ def sig_spots(adata, method='z-score', fdr=True, threshold=0.1):
 
 def drop_uns_na(adata, global_stat=False, local_stat=False):
     adata.uns['geneInter'] = adata.uns['geneInter'].fillna('NA')
+    adata.uns['global_res'] = adata.uns['global_res'].fillna('NA')
     adata.uns['ligand'] = adata.uns['ligand'].fillna('NA')
     adata.uns['receptor'] = adata.uns['receptor'].fillna('NA')
-    adata.uns['geneInter'].pop('ligand')
-    adata.uns['geneInter'].pop('receptor')
+    adata.uns['local_stat']['n_spots'] = pd.DataFrame(adata.uns['local_stat']['n_spots'], columns=['n_spots'])
     if global_stat and ('global_stat' in adata.uns.keys()):
         adata.uns.pop('global_stat')
     if local_stat and ('local_stat' in adata.uns.keys()):
         adata.uns.pop('local_stat')
+
+def restore_uns_na(adata):
+    adata.uns['geneInter'] = adata.uns['geneInter'].replace('NA', np.nan)
+    adata.uns['global_res'] = adata.uns['global_res'].replace('NA', np.nan)
+    adata.uns['ligand'] = adata.uns['ligand'].replace('NA', np.nan)
+    adata.uns['receptor'] = adata.uns['receptor'].replace('NA', np.nan)
+    adata.uns['local_stat']['n_spots'] =  adata.uns['local_stat']['n_spots'].n_spots
 
 def write_spatialdm_h5ad(adata, filename=None):
     if filename is None:
@@ -278,6 +276,11 @@ def write_spatialdm_h5ad(adata, filename=None):
         filename = filename+'.h5ad'
     drop_uns_na(adata)
     adata.write(filename)
+
+def read_spatialdm_h5ad(filename):
+    adata = ann.read_h5ad(filename)
+    restore_uns_na(adata)
+    return adata
 
 #     def save_spataildm(adata, result_dir, exclude=[]):
 #         """
