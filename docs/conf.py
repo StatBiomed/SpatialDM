@@ -33,7 +33,6 @@ from urllib.request import urlretrieve
 notebooks_url = "https://github.com/leeyoyohku/SpatialDM/raw/main/tutorial/"
 notebooks = [
     "melanoma.ipynb",
-    "intestine_A1.ipynb",
     "differential_test_intestine.ipynb"
 ]
 for nb in notebooks:
