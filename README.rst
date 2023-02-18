@@ -72,7 +72,7 @@ spatially co-expressed.
    :width: 200px
    :align: center
    
-.. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/SPP1_CD4.png?raw=true
+.. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/SPP1_CD44.png?raw=true
    :width: 600px
    :align: center
 
