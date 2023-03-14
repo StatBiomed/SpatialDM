@@ -34,7 +34,7 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
     if rbf_d.shape[0] > 1000:
         rbf_d = rbf_d.astype(np.float16)
 
-    nnbrs = NearestNeighbors(n_nearest_neighbors, algorithm='ball_tree').fit(rbf_d)
+    nnbrs = NearestNeighbors(n_neighbors=n_nearest_neighbors, algorithm='ball_tree').fit(rbf_d)
     knn0 = nnbrs.kneighbors_graph(rbf_d).toarray()
     rbf_d0 = rbf_d * knn0
 
@@ -42,7 +42,7 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
         rbf_d[rbf_d < cutoff] = 0
 
     elif n_neighbors:
-        nbrs = NearestNeighbors(n_neighbors, algorithm='ball_tree').fit(rbf_d)
+        nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
         knn = nbrs.kneighbors_graph(rbf_d).toarray()
         rbf_d = rbf_d * knn
 
@@ -135,8 +135,10 @@ def spatialdm_global(adata, n_perm=1000, specified_ind=None, method='z-score', n
     :param nproc: default to 1. Please decide based on your system.
     :return: 'global_res' dataframe in adata.uns containing pair info and Moran p-values
     """
-    if type(specified_ind) == type(None):
+    if specified_ind is None:
         specified_ind = adata.uns['geneInter'].index.values  # default to all pairs
+    else:
+        adata.uns['geneInter'] = adata.uns['geneInter'].loc[specified_ind]
     total_len = len(specified_ind)
     adata.uns['ligand'] = adata.uns['ligand'].loc[specified_ind]#.values
     adata.uns['receptor'] = adata.uns['receptor'].loc[specified_ind]#.values

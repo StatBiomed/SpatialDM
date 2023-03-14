@@ -20,8 +20,9 @@ def globle_st_compute(adata):
          - 2 * N * (adata.obsp['nearest_neighbors'].sum(1) * adata.obsp['nearest_neighbors'].sum(0)).sum() \
          + adata.obsp['nearest_neighbors'].sum() ** 2
     dm = N ** 2 * (N - 1) ** 2
-    var = np.hstack((np.repeat(nm0, adata.uns['geneInter'].annotation.value_counts()[:2].sum()),
-                    np.repeat(nm, adata.uns['geneInter'].annotation.value_counts()[2].sum()))) / dm
+    var = np.hstack(
+        (np.repeat(nm0, adata.uns['geneInter'].annotation.isin(['ECM-Receptor', 'Cell-Cell Contact']).sum()),
+         np.repeat(nm, adata.uns['geneInter'].annotation.isin(['Secreted Signaling']).sum()))) / dm
     st = var ** (1 / 2)
     return st
 
@@ -53,7 +54,7 @@ def _standardise(X, Local=False, axis=None):
     N = len(X)
     if type(X[0]) == csr_matrix:
         X = np.array([i.A[:,0] for i in X])
-        X = X.T
+        # X = X.T
     if Local==False:
         X = X.T
         N = 1
@@ -204,15 +205,21 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale=Tr
     try:
         adata.uns['local_z_p'] = np.where(pos.T == False, 1, adata.uns['local_z_p'])
         adata.uns['local_z_p'] = pd.DataFrame(adata.uns['local_z_p'], index=ind, columns=adata.obs_names)
+    except Exception:
+        pass
+
+    try:
         adata.uns['local_perm_p'] = (np.expand_dims(adata.uns['local_stat']['local_I'].T + \
                                                     adata.uns['local_stat']['local_I_R'].T, 1) <= \
                                      (adata.uns['local_stat']['local_permI'] + adata.uns['local_stat'][
                                          'local_permI_R'])).sum(1) / n_perm
         adata.uns['local_perm_p'] = np.where(pos.T == False, 1, adata.uns['local_perm_p'])
         adata.uns['local_perm_p'] = pd.DataFrame(adata.uns['local_perm_p'], index=ind, columns=adata.obs_names)
-    except OSError as e:
-        if e.errno != e.errno:
-            raise
+    except Exception:
+        pass
+        # except OSError as e:
+    #     if e.errno != e.errno:
+    #         raise
 
 
 def compute_pathway(sample=None,

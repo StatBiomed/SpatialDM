@@ -73,8 +73,7 @@ def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, n
     :param save: 'svg' or 'png' or None
     :return: Chord diagram showing enriched cell types. Edge color indicates source cell types.
     """
-    if save is not None:
-        file_format = save.split('.')[-1]
+
     if color_dic is None:
         ct = adata.obs.columns.sort_values()
         l = len(ct)
@@ -127,10 +126,12 @@ def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, n
         n.output_backend = "svg"
     plots = ar.reshape(-1, ncol).tolist()
     grid = gridplot(plots)
-    if file_format == 'svg':
-        export_svg(grid, filename=save)
-    elif file_format == 'png':
-        export_png(grid, filename=save)
+    if save is not None:
+        file_format = save.split('.')[-1]
+        if file_format == 'svg':
+            export_svg(grid, filename=save)
+        elif file_format == 'png':
+            export_png(grid, filename=save)
     show(grid)
     return grid
 
@@ -148,8 +149,6 @@ def chord_LR(adata, senders, receivers, color_dic=None,
         :param save: 'svg' or 'png' or None
         :return: Chord diagram showing enriched interactions. Edge color indicates ligand.
     """
-    if save is not None:
-        file_format = save.split('.')[-1]
     if color_dic is None:
         subgeneInter = adata.uns['geneInter'].loc[adata.uns['selected_spots'].index]
         type_interaction = subgeneInter.annotation
@@ -208,14 +207,15 @@ def chord_LR(adata, senders, receivers, color_dic=None,
 
     ar = np.array([hv.render(fig) for fig in ls])
     for n in ar:
-        n.output_backend="svg"
-    plots = ar.reshape(-1,ncol).tolist()
+        n.output_backend = "svg"
+    plots = ar.reshape(-1, ncol).tolist()
     grid = gridplot(plots)
-
-    if file_format=='svg':
-        export_svg(grid, filename=save)
-    elif file_format=='png':
-        export_png(grid, filename=save)
+    if save is not None:
+        file_format = save.split('.')[-1]
+        if file_format == 'svg':
+            export_svg(grid, filename=save)
+        elif file_format == 'png':
+            export_png(grid, filename=save)
     show(grid)
     return grid
 
@@ -233,8 +233,7 @@ def chord_celltype_allpairs(adata, color_dic=None,
        :return: 3 chord diagrams showing enriched cell types, one for adjacent signaling, \
        one for secreted signaling, and the other for the aggregated.
        """
-    if save is not None:
-        file_format = save.split('.')[-1]
+
     if color_dic is None:
         ct = adata.obs.columns.sort_values()
         l = len(ct)
@@ -293,15 +292,17 @@ def chord_celltype_allpairs(adata, color_dic=None,
 
     ar = np.array([hv.render(fig) for fig in ls])
     for n in ar:
-        n.output_backend="svg"
-    plots = ar.reshape(-1,ncol).tolist()
+        n.output_backend = "svg"
+    plots = ar.reshape(-1, ncol).tolist()
     grid = gridplot(plots)
-
-    if file_format=='svg':
-        export_svg(grid, filename=save)
-    elif file_format=='png':
-        export_png(grid, filename=save)
+    if save is not None:
+        file_format = save.split('.')[-1]
+        if file_format == 'svg':
+            export_svg(grid, filename=save)
+        elif file_format == 'png':
+            export_png(grid, filename=save)
     show(grid)
+    return grid
 
 
 def plt_util(title):
@@ -320,15 +321,15 @@ def plot_selected_pair(sample, pair, spots, selected_ind, figsize, cmap, cmap_l,
     plt.subplot(1, 5, 1)
     plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=spots.loc[pair], cmap=cmap,
                 vmax=1, **kwargs)
-    plt_util('Moran: ' + str(sample.uns['local_stat']['n_spots'][pair]) + ' spots')
+    plt_util('Moran: ' + str(sample.uns['local_stat']['n_spots'].loc[pair]) + ' spots')
     for l in range(l1):
         plt.subplot(1, 5, 2 + l)
-        plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,L[l]].X,
+        plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,L[l]].X.toarray(),
                     cmap=cmap_l, **kwargs)
         plt_util('Ligand: ' + L[l])
     for l in range(l2):
         plt.subplot(1, 5, 2 + l1 + l)
-        plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,R[l]].X,
+        plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,R[l]].X.toarray(),
                     cmap=cmap_r, **kwargs)
         plt_util('Receptor: ' + R[l])
 
@@ -585,8 +586,8 @@ def global_plot(sample, pairs=None, figsize=(3,4),loc=2, **kwarg):
     if pairs!=None:
         for i,pair in enumerate(pairs):
             plt.scatter(np.log1p(sample.uns['global_I'])[sample.uns['ligand'].index==pair],
-                        -np.log1p(sample.uns['global_res'].perm_pval)[sample.uns['ligand'].index==pair],
-                        c=color_codes[i])
+                        -np.log1p(sample.uns['global_res'][p])[sample.uns['ligand'].index==pair],
+                        c=color_codes[i]) #TODO: perm pval only?
     plt.xlabel('log1p Global I')
     plt.ylabel('-log1p(pval)')
     ax.spines['top'].set_visible(False)
