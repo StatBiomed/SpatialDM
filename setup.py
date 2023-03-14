@@ -27,7 +27,8 @@ reqs = [
     'scanpy',
     'pandas',
     'sklearn',
-    'seaborn'
+    'seaborn',
+    'holoviews'
     ]
 
 setup(
