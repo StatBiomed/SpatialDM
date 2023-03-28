@@ -85,15 +85,11 @@ The full manual is at https://spatialdm.readthedocs.io, including:
 
 * `Permutation-based SpatialDM (Recommended for small datasets, <10k spots)`_.
 
-* `Analytical z-score-based SpatialDM`_.
-
 * `Differential analyses of whole interactome among varying conditions`_.
 
-.. _Permutation-based SpatialDM (Recommended for small datasets, <10k spots): docs/melanoma.ipynb
+.. _Permutation-based SpatialDM (Recommended for small datasets, <10k spots): tutorial/melanoma.ipynb
 
-.. _Analytical z-score-based SpatialDM: docs/intestine_A1.ipynb
-
-.. _Differential analyses of whole interactome among varying conditions: docs/differential_test_intestine.ipynb
+.. _Differential analyses of whole interactome among varying conditions: tutorial/differential_test_intestine.ipynb
 
 
 
