@@ -194,7 +194,7 @@ def sig_pairs(adata, method='z-score', fdr=True, threshold=0.1):
     adata.uns['global_res']['selected'] = (_p < threshold)
 
 def spatialdm_local(adata, n_perm=1000, method='z-score', specified_ind=None,
-                    nproc=1, scale_X=True, scale_R=True):
+                    nproc=1, scale_X=True):
     """
         local spot selection
     :param n_perm: number of times for shuffling neighbors partner for a given spot, default to 1000.
@@ -227,8 +227,7 @@ def spatialdm_local(adata, n_perm=1000, method='z-score', specified_ind=None,
 
     ## different approaches
     with threadpool_limits(limits=nproc, user_api='blas'):
-        spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X,
-                          scale_R):
+        spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X):
 
 
 def sig_spots(adata, method='z-score', fdr=True, threshold=0.1):
