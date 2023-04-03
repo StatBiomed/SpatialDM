@@ -7,7 +7,7 @@ import random
 from scipy import stats
 import time
 from tqdm import tqdm
-from scipy.sparse import csc_matrix, csr_matrix
+from scipy.sparse import csc_matrix, csr_matrix, issparse
 
 
 # global variance
@@ -132,13 +132,15 @@ def norm_max(X):
     X=np.where(np.isnan(X), 0, X)
     return X
 
-def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale=True):
+
+def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=True,
+                          scale_R=True):
     # local variables (only live in this function scope)
     # normalize raw counts
     raw_norm = adata.raw.to_adata()
     raw_norm.X = csr_matrix([norm_max(X) for X in raw_norm.X.T]).T
     import scanpy as sc
-    if scale:
+    if scale_X:
         sc.pp.scale(raw_norm, zero_center=False)
     if adata.uns['mean'] == 'geometric':
         from scipy.stats.mstats import gmean
@@ -181,6 +183,12 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale=Tr
         rbf_d = csc_matrix(weight_matrix)
         adata.uns['local_stat']['local_I'][:, r] = (rbf_d @ R_mat_use) * L_mat_use
         adata.uns['local_stat']['local_I_R'][:, r] = (rbf_d @ L_mat_use) * R_mat_use
+        if scale_R:
+            adata.uns['local_stat']['local_I'][:, r], mean, std = scale(
+                adata.uns['local_stat']['local_I'][:, r], max_value=10, return_mean_std=True)
+            adata.uns['local_stat']['local_I_R'][:, r], mean_R, std_R = scale(
+                adata.uns['local_stat']['local_I_R'][:, r], max_value=10, return_mean_std=True)
+
         ## Calculate p values
         if method in ['both', 'z-score']:
             norm_res1 = [stats.norm.fit(L_mat_use[:, i]) for i in range(L_mat_use.shape[1])]
@@ -202,6 +210,14 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale=Tr
                 _idx = np.random.permutation(L_mat.shape[0])
                 adata.uns['local_stat']['local_permI'][r, i, :] = ((rbf_d @ R_mat_use[_idx, :]) * L_mat_use).T
                 adata.uns['local_stat']['local_permI_R'][r, i, :] = ((rbf_d @ L_mat_use[_idx, :]) * R_mat_use).T
+                if scale_R:
+                    adata.uns['local_stat']['local_permI'][r, i, :] = scale(
+                        adata.uns['local_stat']['local_permI'][r, i, :].T,
+                        max_value=10, return_mean_std=False, mean=mean, std=std).T
+                    adata.uns['local_stat']['local_permI_R'][r, i, :] = scale(
+                        adata.uns['local_stat']['local_permI_R'][r, i, :].T,
+                        max_value=10, return_mean_std=False, mean=mean_R, std=std_R).T
+
     try:
         adata.uns['local_z_p'] = np.where(pos.T == False, 1, adata.uns['local_z_p'])
         adata.uns['local_z_p'] = pd.DataFrame(adata.uns['local_z_p'], index=ind, columns=adata.obs_names)
@@ -217,10 +233,51 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale=Tr
         adata.uns['local_perm_p'] = pd.DataFrame(adata.uns['local_perm_p'], index=ind, columns=adata.obs_names)
     except Exception:
         pass
-        # except OSError as e:
-    #     if e.errno != e.errno:
-    #         raise
 
+def scale(
+        X,
+        max_value,
+        return_mean_std,
+        copy=True,
+        zero_center=False,
+        mean=None, std=None,
+):
+    if copy:
+        X = X.copy()
+    if mean is None:
+        mean, var = _get_mean_var(X)
+        std = np.sqrt(var)
+        std[std == 0] = 1
+    if issparse(X):
+        if zero_center:
+            raise ValueError("Cannot zero-center sparse matrix.")
+        sparsefuncs.inplace_column_scale(X, 1 / std) #TODO:check sparse mat
+    else:
+        if zero_center:
+            X -= mean
+        X /= std
+
+    # do the clipping
+    if max_value is not None:
+        print(f"... clipping at max_value {max_value}")
+        X[X > max_value] = max_value
+
+    if return_mean_std:
+        return X, mean, std
+    else:
+        return X
+
+
+def _get_mean_var(X, *, axis=0):
+    if issparse(X):
+        mean, var = sparse_mean_variance_axis(X, axis=axis)
+    else:
+        mean = np.mean(X, axis=axis, dtype=np.float64)
+        mean_sq = np.multiply(X, X).mean(axis=axis, dtype=np.float64)
+        var = mean_sq - mean ** 2
+    # enforce R convention (unbiased estimator) for variance
+    var *= X.shape[axis] / (X.shape[axis] - 1)
+    return mean, var
 
 def compute_pathway(sample=None,
                     all_interactions=None,
