@@ -227,7 +227,7 @@ def spatialdm_local(adata, n_perm=1000, method='z-score', specified_ind=None,
 
     ## different approaches
     with threadpool_limits(limits=nproc, user_api='blas'):
-        spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X):
+        spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X)
 
 
 def sig_spots(adata, method='z-score', fdr=True, threshold=0.1):
