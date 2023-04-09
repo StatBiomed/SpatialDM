@@ -98,8 +98,19 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
         print('Warning: some LR pairs have no expression.')
     adata.uns['ligand'] = ligand.loc[idx_use]
     adata.uns['receptor'] = receptor.loc[idx_use]
-    R_mat = np.array(R_mat)
-    L_mat = np.array(L_mat)
+    
+    from scipy.sparse import isspmatrix, hstack, csc_matrix
+    if isspmatrix(adata.X):
+        L_mat = csc_matrix(hstack(L_mat)).T
+        R_mat = csc_matrix(hstack(R_mat)).T
+        
+        # TODO: not support sparse matrix as intermediate results
+        L_mat = L_mat.toarray()
+        R_mat = R_mat.toarray()
+    else:
+        R_mat = np.array(R_mat)
+        L_mat = np.array(L_mat)
+
     R_mat_use = _standardise(R_mat[idx_use], axis=0)
     L_mat_use = _standardise(L_mat[idx_use], axis=0)
     adata.uns['global_I'] = np.hstack((((csc_matrix(adata.obsp['nearest_neighbors']) @ L_mat_use[:, :n_short_lri]) * \
