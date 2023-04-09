@@ -25,11 +25,14 @@ reqs = [
     'matplotlib', 
     'statsmodels>=0.11.1',
     'scanpy',
-    'threadpoolctl'
-]
+    'pandas',
+    'sklearn',
+    'seaborn',
+    'holoviews'
+    ]
 
 setup(
-    name='spatialdm',
+    name='SpatialDM',
 
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
@@ -77,7 +80,7 @@ setup(
             #'sphinx == 1.8.3',
             'sphinx_bootstrap_theme']},
 
-    py_modules = ['spatialdm']
+    py_modules = ['SpatialDM']
 
     # buid the distribution: python setup.py sdist
     # upload to pypi: twine upload dist/...

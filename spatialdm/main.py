@@ -1,373 +1,349 @@
 import os
-import argparse
-import time
-
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from statsmodels.stats.multitest import fdrcorrection
 from scipy import spatial
-from scipy.stats import norm
-import matplotlib.pyplot as plt
-import json
-from scipy.sparse import csc_matrix
+# import json
+from threadpoolctl import threadpool_limits
 from .utils import *
+from itertools import zip_longest
+import anndata as ann
 
-class SpatialDM(object):
-    """ 
-    class SpatialDM(object)
+
+def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6, single_cell=False):
     """
-    def __init__(self, exp, raw, spatialcoord):
-        """
-        load spatial data
-                Index names for exp and spatialcoord should be exactly the same
-        :param exp: expression matrix (exp): genes in columns,  spots in rows.
-        :param spatialcoord: spatial coordinate (spatialcoord): two columns named 'x' and 'y', spots in rows.  
-        """
-        self.exp = exp
-        self.raw = raw
-        self.spatialcoord = spatialcoord
-        self.N = spatialcoord.shape[0]
-        self.exp = self.exp.reindex(index=self.spatialcoord.index)
+    compute weight matrix based on radial basis kernel.
+    cutoff & n_neighbors are two alternative options to restrict signaling range.
+    :param l: radial basis kernel parameter, need to be customized for optimal weight gradient and \
+    to restrain the range of signaling before downstream processing.
+    :param cutoff: (for secreted signaling) minimum weight to be kept from the rbf weight matrix. \
+    Weight below cutoff will be made zero
+    :param n_neighbors: (for secreted signaling) number of neighbors per spot from the rbf weight matrix.
+    :param n_nearest_neighbors: (for adjacent signaling) number of neighbors per spot from the rbf \
+    weight matrix.
+    Non-neighbors will be made 0
+    :param single_cell: if single cell resolution, diagonal will be made 0.
+    :return: secreted signaling weight matrix: adata.obsp['weight'], \
+            and adjacent signaling weight matrix: adata.obsp['nearest_neighbors']
+    """
+    adata.uns['single_cell'] = single_cell
+    pdist = spatial.distance.pdist(adata.obsm['spatial'], 'sqeuclidean')
+    pdist = spatial.distance.squareform(pdist)
+    rbf_d = np.exp(-pdist / (2 * l ** 2))  # RBF Distance
+    if rbf_d.shape[0] > 1000:
+        rbf_d = rbf_d.astype(np.float16)
 
-    def weight_matrix(self, l, cutoff=None, n_neighbors=None, single_cell=False):
-        """
-        compute weight matrix based on radial basis kernel. 
-        cutoff & n_neighbors are two alternative options to \
-        make the matrix sparse 
-        :param l: radial basis kernel parameter, need to be customized to restrain the range of signaling
-         before downstream processing.
-        :param cutoff: minimum weight to be kept from the rbf weight matrix. Weight below cutoff will be made zero
-        :param n_neighbors: number of neighbors per spot from the rbf weight matrix.
-        Non-neighbors will be made 0
-        :param single_cell: if single cell resolution, diagonal will be made 0.
-        :return: rbf_d weight matrix in obj attribute
-        """
-        pdist = spatial.distance.pdist(self.spatialcoord.values, 'sqeuclidean')
-        pdist = spatial.distance.squareform(pdist)
-        rbf_d = np.exp(-pdist / (2 * l ** 2))  # RBF Distance
-        if rbf_d.shape[0] > 1000:
-            rbf_d = rbf_d.astype(np.float16)
-        if cutoff:
-            rbf_d[rbf_d < cutoff] = 0
-        elif n_neighbors:
-            nbrs = NearestNeighbors(n_neighbors, algorithm='ball_tree').fit(rbf_d)
-            knn = nbrs.kneighbors_graph(rbf_d).toarray()
-            rbf_d = rbf_d * knn
-        self.rbf_d = rbf_d * self.N / rbf_d.sum()
+    nnbrs = NearestNeighbors(n_neighbors=n_nearest_neighbors, algorithm='ball_tree').fit(rbf_d)
+    knn0 = nnbrs.kneighbors_graph(rbf_d).toarray()
+    rbf_d0 = rbf_d * knn0
 
-        if single_cell:
-            np.fill_diagonal(self.rbf_d, 0)
-        else:
-            pass
+    if cutoff:
+        rbf_d[rbf_d < cutoff] = 0
 
-        return
+    elif n_neighbors:
+        nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
+        knn = nbrs.kneighbors_graph(rbf_d).toarray()
+        rbf_d = rbf_d * knn
 
-    def extract_lr(self, species, min_cell=0):
-        """
-            find overlapping LRs from CellChatDB
-        :param species: only 'human' or 'mouse' is supported
-        :param min_cell: for each selected pair, the spots expressing ligand or receptor should be larger than the min,
-        respectively.
-        :return: 3 obj attributes: ind, ligand, receptor
-        """
-        if species == 'mouse':
-            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
-            comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
+    if single_cell:
+        np.fill_diagonal(rbf_d, 0)
+        np.fill_diagonal(rbf_d0, 0)
+    else:
+        pass
 
-        elif species == 'human':
-            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638943', header=0, index_col=0)
-            comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
-        else:
-            raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
+    adata.obsp['weight'] = rbf_d * adata.shape[0] / rbf_d.sum()
+    adata.obsp['nearest_neighbors'] = rbf_d0 * adata.shape[0] / rbf_d0.sum()
+    return
 
-        ligand = geneInter.ligand.values
-        receptor = geneInter.receptor.values
-        t = []
-        for i in range(len(ligand)):
-            for n in [ligand, receptor]:
-                l = n[i]
-                if l in comp.index:
-                    n[i] = comp.loc[l].dropna().values[pd.Series \
-                        (comp.loc[l].dropna().values).isin(self.exp.columns)]
-                else:
-                    n[i] = pd.Series(l).values[pd.Series(l).isin(self.exp.columns)]
-            if (len(ligand[i]) > 0) * (len(receptor[i]) > 0):
-                if (sum(self.exp.loc[:, ligand[i]].mean(axis=1) > 0) >= min_cell) * \
-                        (sum(self.exp.loc[:, ligand[i]].mean(axis=1) > 0) >= min_cell):
-                    t.append(True)
-                else:
-                    t.append(False)
+def extract_lr(adata, species, mean='algebra', min_cell=0):
+    """
+    find overlapping LRs from CellChatDB
+    :param adata: AnnData object
+    :param species: support 'human', 'mouse' and 'zebrafish'
+    :param mean: 'algebra' (default) or 'geometric'
+    :param min_cell: for each selected pair, the spots expressing ligand or receptor should be larger than the min,
+    respectively.
+    :return: ligand, receptor, geneInter (containing comprehensive info from CellChatDB) dataframes \
+            in adata.uns
+    """
+    if mean=='geometric':
+        from scipy.stats.mstats import gmean
+    adata.uns['mean'] = mean
+    if species == 'mouse':
+        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
+        comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
+    elif species == 'human':
+        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638943', header=0, index_col=0)
+        comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
+    elif species == 'zebrafish':
+        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/38756022', header=0, index_col=0)
+        comp = pd.read_csv('https://figshare.com/ndownloader/files/38756019', header=0, index_col=0)
+    else:
+        raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
+    geneInter = geneInter.sort_values('annotation')
+    ligand = geneInter.ligand.values
+    receptor = geneInter.receptor.values
+    geneInter.pop('ligand')
+    geneInter.pop('receptor')
+
+    t = []
+    for i in range(len(ligand)):
+        for n in [ligand, receptor]:
+            l = n[i]
+            if l in comp.index:
+                n[i] = comp.loc[l].dropna().values[pd.Series \
+                    (comp.loc[l].dropna().values).isin(adata.var_names)]
+            else:
+                n[i] = pd.Series(l).values[pd.Series(l).isin(adata.var_names)]
+        if (len(ligand[i]) > 0) * (len(receptor[i]) > 0):
+            if mean=='geometric':
+                meanL = gmean(adata[:, ligand[i]].X, axis=1)
+                meanR = gmean(adata[:, receptor[i]].X, axis=1)
+            else:
+                meanL = adata[:, ligand[i]].X.mean(axis=1)
+                meanR = adata[:, receptor[i]].X.mean(axis=1)
+            if (sum(meanL > 0) >= min_cell) * \
+                    (sum(meanR > 0) >= min_cell):
+                t.append(True)
             else:
                 t.append(False)
-        self.ligand, self.receptor, self.ind = ligand[t], receptor[t], geneInter[t].index
-        self.num_pairs = len(self.ind)
-        self.geneInter =  geneInter.loc[self.ind]
-        if self.num_pairs==0:
-            raise ValueError("No effective RL. Please have a check on input exp/species.")
-        return
-
-    def spatialdm_global(self, n_perm=1000, select_num=None, method='z-score',
-                         nproc=1, via_matrix=True, via_sparse=True):
-        """
-            global selection. 2 alternative methods can be specified.
-        :param n_perm: number of times for shuffling receptor expression for a given pair, default to 1000.
-        :param select_num: array containing queried indices for quick test/only run selected pair(s).
-        If not specified, selection will be done for all pairs
-        :param method: default to 'z-score' for computation efficiency.
-            Alternatively, can specify 'permutation' or 'both'.
-            Two approaches should generate consistent results in general.
-        :param nproc: default to 1. Please decide based on your system.
-        :return: 'global_res' dataframe in obj attribute containing pair info and p-values
-        """
-        if type(select_num) == type(None):
-            select_num = np.arange(self.num_pairs) # default to all pairs
-        total_len = len(select_num)
-        self.ligand = self.ligand[select_num]
-        self.receptor = self.receptor[select_num]
-        self.ind = self.ind[select_num]
-        self.global_res = pd.DataFrame({'ligand': self.ligand,
-                                 'receptor': self.receptor}, index=self.ind)
-        self.global_I = np.zeros(total_len)
-
-        if method in ['z-score', 'both']:
-            self.v = var_compute(self)
-            self.st = self.v ** (1 / 2)
-            self.z, self.z_p = np.zeros(total_len), np.zeros(total_len)
-        if method in ['both', 'permutation']:
-            self.global_perm = np.zeros((total_len, n_perm)).astype(np.float16)
-
-        if not (method in ['both', 'z-score', 'permutation']):
-            raise ValueError("Only one of ['z-score', 'both', 'permutation'] is supported")
-        
-        ## different approaches
-        if via_matrix:
-            sel_ind = np.arange(len(select_num))
-            from threadpoolctl import threadpool_limits
-            with threadpool_limits(limits=nproc, user_api='blas'):
-                pair_selection_matrix(self, n_perm, sel_ind, method, via_sparse)
         else:
-            LEN_div = int(len(select_num) / nproc)  # multiprocessing split by pairs
-            pool = multiprocessing.Pool(processes=nproc)
-            for ii in range(nproc):
+            t.append(False)
+    ind = geneInter[t].index
+    adata.uns['ligand'] = pd.DataFrame.from_records(zip_longest(*pd.Series(ligand[t]).values)).transpose()
+    adata.uns['ligand'].columns = ['Ligand' + str(i) for i in range(adata.uns['ligand'].shape[1])]
+    adata.uns['ligand'].index = ind
+    adata.uns['receptor'] = pd.DataFrame.from_records(zip_longest(*pd.Series(receptor[t]).values)).transpose()
+    adata.uns['receptor'].columns = ['Receptor' + str(i) for i in range(adata.uns['receptor'].shape[1])]
+    adata.uns['receptor'].index = ind
+    adata.uns['num_pairs'] = len(ind)
+    adata.uns['geneInter'] = geneInter.loc[ind]
+    if adata.uns['num_pairs'] == 0:
+        raise ValueError("No effective RL. Please have a check on input count matrix/species.")
+    return
 
-                sel_ind = np.arange(LEN_div * ii, LEN_div * (ii+1), 1)
-                pool.apply_async(pair_selection(self, n_perm, sel_ind, method))
-            pool.close()
-            pool.join()
-            pool = multiprocessing.Pool(processes=nproc)
-            if (len(select_num) % nproc) > 0:
-                sel_ind = select_num[-(len(select_num) % nproc):]
-                pool.apply_async(pair_selection(self, n_perm, sel_ind, method))
-            pool.close()
-            pool.join()
-
-        if method in ['z-score', 'both']:
-            self.z_p = np.where(np.isnan(self.z_p), 1, self.z_p)
-            self.global_res['z_pval'] = self.z_p
-        if method in ['both', 'permutation']:
-            self.global_p = 1 - (self.global_I > self.global_perm.T).sum(axis=0) / n_perm
-            self.global_res['perm_pval'] = self.global_p
-        return
-
-    def sig_pairs(self, method='z-score', fdr=True, threshold=0.1):
-        """
-            select significant pairs
-        :param method: only one of 'z-score' or 'permutation' to select significant pairs.
-        :param fdr: True or False. If fdr correction will be done for p-values.
-        :param threshold: 0-1. p-value or fdr cutoff to retain significant pairs. Default to 0.1.
-        :return: 'selected' column in global_res containing whether or not a pair should be retained
-        """
-        if method=='z-score':
-            _p = self.global_res['z_pval'].values
-        elif method=='permutation':
-            _p = self.global_res['perm_pval'].values
-        else:
-            raise ValueError("Only one of ['z-score', 'permutation'] is supported")
-        if fdr:
-            _p = fdrcorrection(_p)[1]
-            self.global_res['fdr'] = _p
-        self.global_res['selected'] = (_p<threshold)
-
-    def spatialdm_local(self, n_perm=1000, method='z-score', select_num=None, nproc=1):
-        """
-            local spot selection
-        :param n_perm: number of times for shuffling neighbors partner for a given spot, default to 1000.
-        :param method: default to 'z-score' for computation efficiency.
-            Alternatively, can specify 'permutation' or 'both' (recommended for spot number < 1000, multiprocesing).
-        :param select_num: array containing queried indices in sample pair(s).
-        If not specified, local selection will be done for all sig pairs
-        :param nproc: default to 1.
-        :return: local p-value matrix in obj attribute.
-        """
-        if (int(n_perm / nproc) != (n_perm / nproc)):
-            raise ValueError("n_perm should be divisible by nproc")
-        if type(select_num) == type(None):
-            select_num = np.arange(len(self.ind))[self.global_res['selected']] # default to global selected pairs
-        total_len = len(select_num)
-        ligand = self.ligand[select_num]
-        receptor = self.receptor[select_num]
-        ind = self.ind[select_num]
-        exp = self.raw
-        self.local_I = np.zeros((total_len, self.N))
-        self.local_I_R = self.local_I.copy()
-        self.pos = self.local_I.copy()
-
-        if method in ['z-score', 'both']:
-            self.local_z, self.local_z_p = np.zeros((total_len, self.N)), np.zeros((total_len, self.N))
-            wij_sq = (self.rbf_d ** 2).sum(1)
-
-        if method in ['both', 'permutation']:
-            LEN_div = int(n_perm / nproc)
-            self.local_permI = np.zeros((total_len, n_perm, self.N),
-                                        dtype=np.float32)
-            self.local_permI_R = self.local_permI.copy()
-            self.local_perm_p =  self.local_I.copy()
-            self.PermTbl = generate_perm_tbl(exp, n_perm, self.N)
-        for k in range(total_len):
-            start = time.time()
-            L = ligand[k]
-            R = receptor[k]
-            x = exp.loc[:, L].mean(axis=1).values
-            y = exp.loc[:, R].mean(axis=1).values
-            self.pos[k] = (abs(x) / x + abs(y) / y) / 2
-            mean_x = x.mean()
-            mean_y = y.mean()
-            x = x - x.mean()
-            y = y - mean_y
-
-            self.local_I[k] = np.matmul(self.rbf_d, y) * x
-            self.local_I_R[k] = np.matmul(self.rbf_d, x) * y
-            self.pos[k] = np.where(np.isnan(self.pos[k]), 0, self.pos[k])
-
-            if method in ['z-score', 'both']:
-                mu1, std1 = norm.fit(x)
-                mu2, std2 = norm.fit(y)
-                sigma1_sq = std1 * self.N / (self.N - 1)
-                sigma2_sq = std2 * self.N / (self.N - 1)
-                v, st = compute_var_local(sigma1_sq, sigma2_sq, wij_sq, self.N)
-                self.local_z[k] = (self.local_I[k] + self.local_I_R[k]) / st
-                self.local_z_p[k] = stats.norm.sf(self.local_z[k].astype(np.float64))
-                self.local_z_p[k] = np.where(self.pos[k] == 0, 1, self.local_z_p[k])
-
-            if method in ['both', 'permutation']:
-                pool = multiprocessing.Pool(processes=nproc)
-                for ii in range(nproc):  # split no_perm permutation into size of LEN_dix
-                    pool.apply_async(permutation, (self, LEN_div, ii,
-                        x, y, L, R, mean_x, mean_y))
-                pool.close()
-                pool.join()
-                self.local_perm_p[k] = (np.expand_dims(self.local_I[k] + self.local_I_R[k], 0) < \
-                                    (self.local_permI[k] + self.local_permI_R[k])).sum(0)/n_perm
-                self.local_perm_p[k] = np.where(self.pos[k] == 0, 1, self.local_perm_p[k])
-
-            print(str(k+1) + 'pairs local selection finished in '+ str(time.time() - start))
-        if method in ['z-score', 'both']:
-            self.local_z_p = pd.DataFrame(self.local_z_p, index=ind)
-        if method in ['both', 'permutation']:
-            self.local_perm_p = pd.DataFrame(self.local_perm_p, index=ind)
-
-
-    def sig_spots(self, method='z-score', fdr=True, threshold=0.1):
-        """
-            pick significantly co-expressing spots
-        :param method: one of the methods from spatialdm_local, default to 'z-score'.
-        :param fdr: True or False, default to True
-        :param threshold: p-value or fdr cutoff to retain significant pairs. Default to 0.1.
-        :return: obj attributes 1) selected_spots: a binary matrix of which spots being selected for each pair;
-         2) n_spots: number of selected spots for each pair.
-        """
-        if method == 'z-score':
-            _p = self.local_z_p
-        if method == 'permutation':
-            _p = self.local_perm_p
-            if fdr:
-                _p = fdrcorrection(np.hstack(_p))[1].reshape(_p.shape)
-                self.local_fdr = _p
-        self.selected_spots = (_p < threshold)
-        self.n_spots = self.selected_spots.sum(1)
-        self.local_method = method
-        return
-
-    def save_spataildm(my_sample, result_dir):
-        """
-        save spataildm output to a specified folder
-        :param result_dir: name of the specified folder
-        """
-        try:
-            os.makedirs(result_dir)
-        except OSError as e:
-            if e.errno != e.errno:
-                raise
-        dic = {}
-        for attr in my_sample.__dict__.keys():
-            res = getattr(my_sample, attr)
-            if type(res) == pd.core.frame.DataFrame:
-                res.to_csv(os.path.join(result_dir, attr + '.csv'), index=True)
-            elif type(res) == np.ndarray:
-                np.save(os.path.join(result_dir, attr), res)
-            elif type(res) in [pd.core.indexes.base.Index, pd.core.series.Series]:
-                my_sample.__dict__[attr] = res.values
-                np.save(os.path.join(result_dir, attr), res)
-            else:
-                dic[attr] = res
-
-        with open(os.path.join(result_dir, 'other'), "w") as fp:
-            json.dump(dic, fp)
-        return
-
-
-def read_spataildm(read_dir):
+def spatialdm_global(adata, n_perm=1000, specified_ind=None, method='z-score', nproc=1):
     """
-    read previously save spatialdm obj from a folder
-    :param read_dir: the dir of saved spatialdm obj
-    :return: spatialdm obj
+        global selection. 2 alternative methods can be specified.
+    :param n_perm: number of times for shuffling receptor expression for a given pair, default to 1000.
+    :param specified_ind: array containing queried indices for quick test/only run selected pair(s).
+    If not specified, selection will be done for all extracted pairs
+    :param method: default to 'z-score' for computation efficiency.
+        Alternatively, can specify 'permutation' or 'both'.
+        Two approaches should generate consistent results in general.
+    :param nproc: default to 1. Please decide based on your system.
+    :return: 'global_res' dataframe in adata.uns containing pair info and Moran p-values
     """
-    exp = pd.read_csv(os.path.join(read_dir, 'exp.csv'), index_col=0)
-    spatialcoord = pd.read_csv(os.path.join(read_dir, 'spatialcoord.csv'), index_col=0)
+    if specified_ind is None:
+        specified_ind = adata.uns['geneInter'].index.values  # default to all pairs
+    else:
+        adata.uns['geneInter'] = adata.uns['geneInter'].loc[specified_ind]
+    total_len = len(specified_ind)
+    adata.uns['ligand'] = adata.uns['ligand'].loc[specified_ind]#.values
+    adata.uns['receptor'] = adata.uns['receptor'].loc[specified_ind]#.values
+    adata.uns['global_I'] = np.zeros(total_len)
+    adata.uns['global_stat'] = {}
+    if method in ['z-score', 'both']:
+        adata.uns['global_stat']['z']={}
+        adata.uns['global_stat']['z']['st'] = globle_st_compute(adata)
+        adata.uns['global_stat']['z']['z'] = np.zeros(total_len)
+        adata.uns['global_stat']['z']['z_p'] = np.zeros(total_len)
+    if method in ['both', 'permutation']:
+        adata.uns['global_stat']['perm']={}
+        adata.uns['global_stat']['perm']['global_perm'] = np.zeros((total_len, n_perm)).astype(np.float16)
 
-    read_sample = SpatialDM(exp, spatialcoord)     # load spatial data
+    if not (method in ['both', 'z-score', 'permutation']):
+        raise ValueError("Only one of ['z-score', 'both', 'permutation'] is supported")
 
-    for f in os.listdir(read_dir):
-        if f in ['exp.csv', 'spatialcoord.csv']:
-            pass
-        elif f.endswith('csv'):
-            read_sample.__dict__[f.split('.')[0]] = pd.read_csv(os.path.join(read_dir, f), index_col=0)
-        elif f.endswith('npy'):
-            read_sample.__dict__[f.split('.')[0]] = np.load(os.path.join(read_dir, f), allow_pickle=True)
-        elif f=='other':
-            with open(os.path.join(read_dir, 'other')) as json_file:
-                _data = json.load(json_file)
-            for k in _data.keys():
-                read_sample.__dict__[k] = _data[k]
-    return read_sample
+    with threadpool_limits(limits=nproc, user_api='blas'):
+        pair_selection_matrix(adata, n_perm, specified_ind, method)
 
-def compute_pathway(sample, ls=None, path_name=None, dic=None):
+    adata.uns['global_res'] = pd.concat((adata.uns['ligand'], adata.uns['receptor']),axis=1)
+    # adata.uns['global_res'].columns = ['Ligand1', 'Ligand2', 'Ligand3', 'Receptor1', 'Receptor2', 'Receptor3', 'Receptor4']
+    if method in ['z-score', 'both']:
+        adata.uns['global_stat']['z']['z_p'] = np.where(np.isnan(adata.uns['global_stat']['z']['z_p']),
+                                                      1, adata.uns['global_stat']['z']['z_p'])
+        adata.uns['global_res']['z_pval'] = adata.uns['global_stat']['z']['z_p']
+        adata.uns['global_res']['z'] = adata.uns['global_stat']['z']['z']
+
+    if method in ['both', 'permutation']:
+        adata.uns['global_stat']['perm']['global_p'] = 1 - (adata.uns['global_I'] \
+                             > adata.uns['global_stat']['perm']['global_perm'].T).sum(axis=0) / n_perm
+        adata.uns['global_res']['perm_pval'] = adata.uns['global_stat']['perm']['global_p']
+    return
+
+def sig_pairs(adata, method='z-score', fdr=True, threshold=0.1):
     """
-    Compute enriched pathways for a list of pairs or a dic of SpatialDE results.
-    :param sample: spatialdm obj
-    :param ls: a list of LR pair indices for the enrichment analysis
-    :param path_name: str. For later recall sample.path_summary[path_name]
-    :param dic: a dic of SpatialDE results (See tutorial)
+        select significant pairs
+    :param method: only one of 'z-score' or 'permutation' to select significant pairs.
+    :param fdr: True or False. If fdr correction will be done for p-values.
+    :param threshold: 0-1. p-value or fdr cutoff to retain significant pairs. Default to 0.1.
+    :return: 'selected' column in global_res containing whether or not a pair should be retained
     """
-    if not 'path_summary' in sample.__dict__:
-        sample.__dict__['path_summary']={}
-    if dic != None:
-        sample.__dict__['path_summary']['pairs'] = dic
-        for i in range(len(dic)):
-            i=str(i)
-            sample.__dict__['path_summary']['P{}'.format(i)]={}
-            cts = sample.geneInter.loc[dic['Pattern_'+i],'pathway_name'].value_counts()
-            cts = cts[::-1]
-            sample.__dict__['path_summary']['P{}'.format(i)]['counts'] = cts
-            perc = cts / \
-                sample.geneInter.loc[:,'pathway_name'].value_counts()
-            sample.__dict__['path_summary']['P{}'.format(i)]['perc'] = perc.dropna()
-    if type(ls)!=type(None):
-        sample.__dict__['path_summary'][path_name] = {}
-        cts = sample.geneInter.loc[ls, 'pathway_name'].value_counts()
-        cts = cts[::-1]
-        sample.__dict__['path_summary'][path_name]['counts'] = cts
-        perc = cts / \
-               sample.geneInter.loc[:, 'pathway_name'].value_counts()
-        sample.__dict__['path_summary'][path_name]['perc'] = perc.dropna()
+    adata.uns['global_stat']['method'] = method
+    if method == 'z-score':
+        _p = adata.uns['global_res']['z_pval'].values
+    elif method == 'permutation':
+        _p = adata.uns['global_res']['perm_pval'].values
+    else:
+        raise ValueError("Only one of ['z-score', 'permutation'] is supported")
+    if fdr:
+        _p = fdrcorrection(_p)[1]
+        adata.uns['global_res']['fdr'] = _p
+    adata.uns['global_res']['selected'] = (_p < threshold)
+
+def spatialdm_local(adata, n_perm=1000, method='z-score', specified_ind=None,
+                    nproc=1, scale_X=True):
+    """
+        local spot selection
+    :param n_perm: number of times for shuffling neighbors partner for a given spot, default to 1000.
+    :param method: default to 'z-score' for computation efficiency.
+        Alternatively, can specify 'permutation' or 'both' (recommended for spot number < 1000, multiprocesing).
+    :param specified_ind: array containing queried indices in sample pair(s).
+    If not specified, local selection will be done for all sig pairs
+    :param nproc: default to 1.
+    :return: 'local_stat' & 'local_z_p' and/or 'local_perm_p' in adata.uns.
+    """
+    adata.uns['local_stat'] = {}
+    if (int(n_perm / nproc) != (n_perm / nproc)):
+        raise ValueError("n_perm should be divisible by nproc")
+    if type(specified_ind) == type(None):
+        specified_ind = adata.uns['global_res'][
+            adata.uns['global_res']['selected']].index  # default to global selected pairs
+    # total_len = len(specified_ind)
+    ligand = adata.uns['ligand'].loc[specified_ind]
+    receptor = adata.uns['receptor'].loc[specified_ind]
+    ind = ligand.index
+    adata.uns['local_stat']['local_I'] = np.zeros((adata.shape[0], len(ind)))
+    adata.uns['local_stat']['local_I_R'] = np.zeros((adata.shape[0], len(ind)))
+    N = adata.shape[0]
+    if method in ['both', 'permutation']:
+        adata.uns['local_stat']['local_permI'] = np.zeros((len(ind), n_perm, N))
+        adata.uns['local_stat']['local_permI_R'] = np.zeros((len(ind), n_perm, N))
+    if method in ['both', 'z-score']:
+        adata.uns['local_z'] = np.zeros((len(ind), adata.shape[0]))
+        adata.uns['local_z_p'] = np.zeros((len(ind), adata.shape[0]))
+
+    ## different approaches
+    with threadpool_limits(limits=nproc, user_api='blas'):
+        spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X)
+
+
+def sig_spots(adata, method='z-score', fdr=True, threshold=0.1):
+    """
+        pick significantly co-expressing spots
+    :param method: one of the methods from spatialdm_local, default to 'z-score'.
+    :param fdr: True or False, default to True
+    :param threshold: p-value or fdr cutoff to retain significant pairs. Default to 0.1.
+    :return:  1) 'selected_spots' in adata.uns: a binary frame of which spots being selected for each pair;
+     2) 'n_spots' in adata.uns['local_stat']: number of selected spots for each pair.
+    """
+    if method == 'z-score':
+        _p = adata.uns['local_z_p']
+    if method == 'permutation':
+        _p = adata.uns['local_perm_p']
+    if fdr:
+        _fdr = fdrcorrection(np.hstack(_p.values))[1].reshape(_p.shape)
+        _p.loc[:,:] = _fdr
+        adata.uns['local_stat']['local_fdr'] = _p
+    adata.uns['selected_spots'] = (_p < threshold)
+    adata.uns['local_stat']['n_spots'] = adata.uns['selected_spots'].sum(1)
+    adata.uns['local_stat']['local_method'] = method
+    return
+
+def drop_uns_na(adata, global_stat=False, local_stat=False):
+    adata.uns['geneInter'] = adata.uns['geneInter'].fillna('NA')
+    adata.uns['global_res'] = adata.uns['global_res'].fillna('NA')
+    adata.uns['ligand'] = adata.uns['ligand'].fillna('NA')
+    adata.uns['receptor'] = adata.uns['receptor'].fillna('NA')
+    adata.uns['local_stat']['n_spots'] = pd.DataFrame(adata.uns['local_stat']['n_spots'], columns=['n_spots'])
+    if global_stat and ('global_stat' in adata.uns.keys()):
+        adata.uns.pop('global_stat')
+    if local_stat and ('local_stat' in adata.uns.keys()):
+        adata.uns.pop('local_stat')
+
+def restore_uns_na(adata):
+    adata.uns['geneInter'] = adata.uns['geneInter'].replace('NA', np.nan)
+    adata.uns['global_res'] = adata.uns['global_res'].replace('NA', np.nan)
+    adata.uns['ligand'] = adata.uns['ligand'].replace('NA', np.nan)
+    adata.uns['receptor'] = adata.uns['receptor'].replace('NA', np.nan)
+    adata.uns['local_stat']['n_spots'] =  adata.uns['local_stat']['n_spots'].n_spots
+
+def write_spatialdm_h5ad(adata, filename=None):
+    if filename is None:
+        filename = 'spatialdm_out.h5ad'
+    elif not filename.endswith('h5ad'):
+        filename = filename+'.h5ad'
+    drop_uns_na(adata)
+    adata.write(filename)
+
+def read_spatialdm_h5ad(filename):
+    adata = ann.read_h5ad(filename)
+    restore_uns_na(adata)
+    return adata
+
+#     def save_spataildm(adata, result_dir, exclude=[]):
+#         """
+#         save spataildm output to a specified folder
+#         :param result_dir: name of the specified folder
+#         """
+#         try:
+#             os.makedirs(result_dir)
+#         except OSError as e:
+#             if e.errno != e.errno:
+#                 raise
+#         dic = {}
+#         for attr in adata.__dict__.keys():
+#             if not attr in exclude:
+#                 res = getattr(self, attr)
+#                 if attr in ['logcounts', 'rawcounts']:
+#                     save_npz(result_dir + attr + '.npz', csc_matrix(res))
+#                 elif type(res) == pd.core.frame.DataFrame:
+#                     res.to_csv(os.path.join(result_dir, attr + '.csv'), index=True)
+#                 elif type(res) == np.ndarray:
+#                     np.save(os.path.join(result_dir, attr), res)
+#                 elif type(res) in [pd.core.indexes.base.Index, pd.core.series.Series]:
+#                     adata.__dict__[attr] = res.values
+#                     np.save(os.path.join(result_dir, attr), res)
+#                 else:
+#                     dic[attr] = res
+# 
+#         with open(os.path.join(result_dir, 'other'), "w") as fp:
+#             json.dump(dic, fp)
+#         return
+# 
+# def read_spataildm(read_dir):
+#     """
+#     read previously save spatialdm obj from a folder
+#     :param read_dir: the dir of saved spatialdm obj
+#     :return: spatialdm obj
+#     """
+#     spot_names = np.load(os.path.join(read_dir, 'spot_names'), allow_pickle=True)
+#     gene_names = np.load(os.path.join(read_dir, 'spot_names'), allow_pickle=True)
+# 
+#     logcounts = load_npz(os.path.join(read_dir, 'logcounts.csv'))
+#     logcounts = pd.DataFrame(logcounts, index=spot_names, columns=gene_names)
+# 
+#     spatialcoord = pd.read_csv(os.path.join(read_dir, 'spatialcoord.csv'), index_col=0)
+# 
+#     rawcounts = load_npz(os.path.join(read_dir, 'rawcounts.csv'))
+#     rawcounts = pd.DataFrame(rawcounts, index=spot_names, columns=gene_names)
+# 
+#     read_sample = SpatialDM(logcounts, rawcounts, spatialcoord)  # load spatial data
+# 
+#     for f in os.listdir(read_dir):
+#         if f in ['logcounts.csv', 'rawcounts.csv', 'spatialcoord.csv']:
+#             pass
+#         elif f.endswith('csv'):
+#             read_sample.__dict__[f.split('.')[0]] = pd.read_csv(os.path.join(read_dir, f), index_col=0)
+#         elif f.endswith('npy'):
+#             read_sample.__dict__[f.split('.')[0]] = np.load(os.path.join(read_dir, f), allow_pickle=True)
+#         elif f == 'other':
+#             with open(os.path.join(read_dir, 'other')) as json_file:
+#                 _data = json.load(json_file)
+#             for k in _data.keys():
+#                 read_sample.__dict__[k] = _data[k]
+#     return read_sample
+
+

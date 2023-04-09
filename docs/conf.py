@@ -32,8 +32,7 @@ from urllib.request import urlretrieve
 
 notebooks_url = "https://github.com/leeyoyohku/SpatialDM/raw/main/tutorial/"
 notebooks = [
-    "melanoma.ipynb ",
-    "intestine_A1.ipynb",
+    "melanoma.ipynb",
     "differential_test_intestine.ipynb"
 ]
 for nb in notebooks:
@@ -72,7 +71,8 @@ extensions = [
 templates_path = ['_templates']
 
 # The suffix of source filenames.
-source_suffix = ['.rst', ".ipynb"]
+source_suffix = ['.rst']
+## don't add '.ipynb' for nbsphinx>=0.8.7
 
 # The encoding of source files.
 #source_encoding = 'utf-8-sig'
@@ -83,7 +83,7 @@ master_doc = 'index'
 # General information about the project.
 project = "SpatialDM"
 author = "Zhuoxuan Li"
-title = "Spatial Direct Messaging Detected by bivariate Moran"
+title = "Spatial Direct Messaging Detected by Bivariate Moran"
 copyright = f"{datetime.now():%Y}, {author}"
 
 # Disable pdf and epub generation
@@ -96,7 +96,7 @@ enable_epub_build = False
 #
 # The short X.Y version.
 import spatialdm
-version = spatialdm.__version__ #'0.1.3' #
+version = spatialdm.__version__ #'0.0.2' #
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -147,8 +147,8 @@ pygments_style = 'sphinx'
 # html_theme = "bizstyle"
 # html_theme = "nature"
 html_theme = 'sphinx_rtd_theme'
-github_repo = 'spatialdm'
-github_nb_repo = 'spatialdm'
+github_repo = 'SpatialDM'
+github_nb_repo = 'SpatialDM'
 html_theme_options = dict(navigation_depth=1, titles_only=True)
 
 
