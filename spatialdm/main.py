@@ -27,30 +27,55 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
     :return: secreted signaling weight matrix: adata.obsp['weight'], \
             and adjacent signaling weight matrix: adata.obsp['nearest_neighbors']
     """
+    def _Euclidean_to_RBF(X, l, singlecell=single_cell):
+        """Convert Euclidean distance to RBF distance"""
+        from scipy.sparse import issparse
+        if issparse:
+            rbf_d = X
+            rbf_d[X.nonzero()] = np.exp(-X[X.nonzero()].A**2 / (2 * l ** 2))
+        else:
+            rbf_d = np.exp(- X**2 / (2 * l ** 2))
+        
+        # At single-cell resolution, no within-spot communications
+        if singlecell:
+            np.fill_diagonal(rbf_d, 0)
+        else:
+            rbf_d.setdiag(np.exp(-X.diagonal()**2 / (2 * l ** 2)))
+
+        return rbf_d
+    
     adata.uns['single_cell'] = single_cell
-    pdist = spatial.distance.pdist(adata.obsm['spatial'], 'sqeuclidean')
-    pdist = spatial.distance.squareform(pdist)
-    rbf_d = np.exp(-pdist / (2 * l ** 2))  # RBF Distance
-    if rbf_d.shape[0] > 1000:
-        rbf_d = rbf_d.astype(np.float16)
+    if isinstance(adata.obsm['spatial'], pd.DataFrame):
+        X_loc = adata.obsm['spatial'].values
+    else:
+        X_loc = adata.obsm['spatial']
 
-    nnbrs = NearestNeighbors(n_neighbors=n_nearest_neighbors, algorithm='ball_tree').fit(rbf_d)
-    knn0 = nnbrs.kneighbors_graph(rbf_d).toarray()
-    rbf_d0 = rbf_d * knn0
+    ## large neighborhood for W (5 layers)
+    nnbrs = NearestNeighbors(
+        n_neighbors=n_nearest_neighbors * 31,
+        algorithm='ball_tree', 
+        metric='euclidean'
+    ).fit(X_loc)
+    nbr_d = nnbrs.kneighbors_graph(X_loc, mode='distance')
+    rbf_d = _Euclidean_to_RBF(nbr_d, l, single_cell)
 
+    ## small neighborhood for RBF
+    nnbrs0 = NearestNeighbors(
+        n_neighbors=n_nearest_neighbors, 
+        algorithm='ball_tree', 
+        metric='euclidean'
+    ).fit(X_loc)
+    nbr_d0 = nnbrs0.kneighbors_graph(X_loc, mode='distance')
+    rbf_d0 = _Euclidean_to_RBF(nbr_d0, l, single_cell)
+
+    # NOTE: add more info about cutoff, n_neighbors and n_nearest_neighbors
     if cutoff:
         rbf_d[rbf_d < cutoff] = 0
 
-    elif n_neighbors:
-        nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
-        knn = nbrs.kneighbors_graph(rbf_d).toarray()
-        rbf_d = rbf_d * knn
-
-    if single_cell:
-        np.fill_diagonal(rbf_d, 0)
-        np.fill_diagonal(rbf_d0, 0)
-    else:
-        pass
+    # elif n_neighbors:
+    #     nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
+    #     knn = nbrs.kneighbors_graph(rbf_d).toarray()
+    #     rbf_d = rbf_d * knn
 
     adata.obsp['weight'] = rbf_d * adata.shape[0] / rbf_d.sum()
     adata.obsp['nearest_neighbors'] = rbf_d0 * adata.shape[0] / rbf_d0.sum()
