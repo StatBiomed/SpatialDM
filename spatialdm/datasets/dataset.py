@@ -9,7 +9,7 @@ _mel = AMetadata(
     url="https://ndownloader.figshare.com/files/36619200",
 )
 
-SVZ = AMetadata(
+_SVZ = AMetadata(
     name="SVZ",
     doc_header="SVZ dataset from `Eng et al <https://doi.org/10.1038/s41586-019-1049-y>`__.",
     shape=(281, 10000),
@@ -78,5 +78,5 @@ for name, var in copy(locals()).items():
 
 
 __all__ = [  # noqa: F822
-    "melanoma",
+    "melanoma", "SVZ",
     "A1","A2","A3","A4","A6","A7","A8","A9"]

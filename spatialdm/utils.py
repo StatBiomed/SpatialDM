@@ -7,18 +7,28 @@ import random
 from scipy import stats
 import time
 from tqdm import tqdm
-from scipy.sparse import csc_matrix, csr_matrix
+from scipy.sparse import csc_matrix, csr_matrix, issparse, hstack
 
 
 # global variance
 def globle_st_compute(adata):
     N = adata.shape[0]
-    nm = N ** 2 * (adata.obsp['weight'] * adata.obsp['weight'].T).sum() \
-         - 2 * N * (adata.obsp['weight'].sum(1) * adata.obsp['weight'].sum(0)).sum() \
-         + adata.obsp['weight'].sum() ** 2
-    nm0 = N ** 2 * (adata.obsp['nearest_neighbors'] * adata.obsp['nearest_neighbors'].T).sum() \
-         - 2 * N * (adata.obsp['nearest_neighbors'].sum(1) * adata.obsp['nearest_neighbors'].sum(0)).sum() \
-         + adata.obsp['nearest_neighbors'].sum() ** 2
+
+    if issparse(adata.obsp['weight']):
+        nm = N ** 2 * adata.obsp['weight'].multiply(adata.obsp['weight'].T).sum() \
+            - 2 * N * (adata.obsp['weight'].sum(0) @ adata.obsp['weight'].sum(1)).sum() \
+            + adata.obsp['weight'].sum() ** 2
+        nm0 = N ** 2 * adata.obsp['nearest_neighbors'].multiply(adata.obsp['nearest_neighbors'].T).sum() \
+            - 2 * N * (adata.obsp['nearest_neighbors'].sum(0) @ adata.obsp['nearest_neighbors'].sum(1)).sum() \
+            + adata.obsp['nearest_neighbors'].sum() ** 2
+    else:
+        nm = N ** 2 * (adata.obsp['weight'] * adata.obsp['weight'].T).sum() \
+            - 2 * N * (adata.obsp['weight'].sum(1) * adata.obsp['weight'].sum(0)).sum() \
+            + adata.obsp['weight'].sum() ** 2
+        nm0 = N ** 2 * (adata.obsp['nearest_neighbors'] * adata.obsp['nearest_neighbors'].T).sum() \
+            - 2 * N * (adata.obsp['nearest_neighbors'].sum(1) * adata.obsp['nearest_neighbors'].sum(0)).sum() \
+            + adata.obsp['nearest_neighbors'].sum() ** 2
+        
     dm = N ** 2 * (N - 1) ** 2
     var = np.hstack(
         (np.repeat(nm0, adata.uns['geneInter'].annotation.isin(['ECM-Receptor', 'Cell-Cell Contact']).sum()),
@@ -26,7 +36,23 @@ def globle_st_compute(adata):
     st = var ** (1 / 2)
     return st
 
+def global_I_compute(adata, L_mat, R_mat, n_short_lri, permute=False):
+    """Calculate global I (i.e., R) values
+    Make sure L_mat and R_mat are numpy.array not matrix
+    """
+    if permute:
+        _idx = np.random.permutation(L_mat.shape[0])
+        L_mat0, R_mat0 = L_mat[_idx, :n_short_lri], R_mat[_idx, :n_short_lri]
+        L_mat1, R_mat1 = L_mat[_idx, n_short_lri:], R_mat[_idx, n_short_lri:]
+    else:
+        L_mat0, R_mat0 = L_mat[:, :n_short_lri], R_mat[:, :n_short_lri]
+        L_mat1, R_mat1 = L_mat[:, n_short_lri:], R_mat[:, n_short_lri:]
 
+    RV = np.hstack((
+        (adata.obsp['nearest_neighbors'] @ L_mat0 * R_mat0).sum(axis=0),
+        (adata.obsp['weight'] @ L_mat1 * R_mat1).sum(axis=0)
+    ))
+    return RV
 
 
 def generate_perm_tbl(adata, n_perm, num_spots):
@@ -43,7 +69,8 @@ def generate_perm_tbl(adata, n_perm, num_spots):
 def compute_var_local(adata, sigma1_sq,sigma2_sq,wij_sq,n ,wii=1):
     if adata.uns['single_cell']:
         wii = 0
-    var_I=2 * (n-1)**2/n**2* wij_sq * sigma1_sq * sigma2_sq + 2 * (n-1)**2/n**2 * sigma1_sq * sigma2_sq * wii
+    var_I = (2 * (n-1)**2/n**2* wij_sq * sigma1_sq * sigma2_sq + 
+             2 * (n-1)**2/n**2 * sigma1_sq * sigma2_sq * wii)
 
     std_I=var_I**(1/2)
     return std_I
@@ -113,28 +140,21 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
 
     R_mat_use = _standardise(R_mat[idx_use], axis=0)
     L_mat_use = _standardise(L_mat[idx_use], axis=0)
-    adata.uns['global_I'] = np.hstack((((csc_matrix(adata.obsp['nearest_neighbors']) @ L_mat_use[:, :n_short_lri]) * \
-                             R_mat_use[:, :n_short_lri]).sum(axis=0),
-                        ((csc_matrix(adata.obsp['weight']) @ L_mat_use[:,n_short_lri:]) * \
-                         R_mat_use[:, n_short_lri:]).sum(axis=0)))
+    adata.uns['global_I'] = global_I_compute(adata, L_mat_use, R_mat_use, n_short_lri)
 
     ## Calculate p values
     if method in ['both', 'z-score']:
-        adata.uns['global_stat']['z']['z'] = adata.uns['global_I'] / adata.uns['global_stat']['z']['st']
-        adata.uns['global_stat']['z']['z_p'][:n_short_lri] = stats.norm.sf(
-            adata.uns['global_stat']['z']['z'][:n_short_lri])
-        adata.uns['global_stat']['z']['z_p'][n_short_lri:] = stats.norm.sf(
-            adata.uns['global_stat']['z']['z'][n_short_lri:])
+        adata.uns['global_stat']['z']['z'] = (
+            adata.uns['global_I'] / adata.uns['global_stat']['z']['st'])
+        adata.uns['global_stat']['z']['z_p'] = stats.norm.sf(
+            adata.uns['global_stat']['z']['z'])
     if method in ['both', 'permutation']:
         adata.uns['global_stat']['perm']['global_perm'] = np.zeros((L_mat_use.shape[1], n_perm))
         for i in tqdm(range(n_perm)):
-            _idx = np.random.permutation(L_mat_use.shape[0])
-            adata.uns['global_stat']['perm']['global_perm'][:n_short_lri, i] = np.sum(
-                (adata.obsp['nearest_neighbors'] @ L_mat_use[_idx, :n_short_lri]) * R_mat_use[_idx, :n_short_lri],
-                axis=0)
-            adata.uns['global_stat']['perm']['global_perm'][n_short_lri:, i] = np.sum(
-                (adata.obsp['weight'] @ L_mat_use[_idx, n_short_lri:]) * R_mat_use[_idx, n_short_lri:], axis=0)
-
+            ## NOTE: most heavy computation, consider speedup in future (e.g., in parallel or tensor)
+            adata.uns['global_stat']['perm']['global_perm'][:, i] = global_I_compute(
+                adata, L_mat_use, R_mat_use, n_short_lri, permute=True
+            )
 
 def norm_max(X):
     if type(X)==csr_matrix:
@@ -189,7 +209,11 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=
         R_mat_use = _standardise(R_mat, Local=True, axis=0)
         L_mat_use = _standardise(L_mat, Local=True, axis=0)
         pos[:, r] = (L_mat_use > 0) + (R_mat_use > 0)
-        wij_sq = (weight_matrix ** 2).sum(1)
+
+        if issparse(weight_matrix):
+            wij_sq = weight_matrix.power(2).sum(1).A.reshape(-1)
+        else:
+            wij_sq = (weight_matrix ** 2).sum(1)
         rbf_d = csc_matrix(weight_matrix)
         adata.uns['local_stat']['local_I'][:, r] = (rbf_d @ R_mat_use) * L_mat_use
         adata.uns['local_stat']['local_I_R'][:, r] = (rbf_d @ L_mat_use) * R_mat_use

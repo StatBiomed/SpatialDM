@@ -75,6 +75,9 @@ setup(
     
     install_requires=reqs,
 
+    include_package_data=True,
+    package_data={'': ['datasets/*.csv', 'datasets/*.csv.gz']},
+
     extras_require={
         'docs': [
             #'sphinx == 1.8.3',
