@@ -4,7 +4,8 @@ Release History
 TODO
 ----
 - support cache for downloaded h5ad data
-- rename local_permI to local_permI_L
+- rename local_permI to local_permI_L (also global)
+- tentatively: make new adata with LR genes only (if raw exist, other make raw)
 
 Development version
 -------------------
@@ -12,6 +13,9 @@ Development version
 - Disabled the output of local permutaiton data in notebook
 - More efficient KNN graph construction, with obsp elements into sparse matrix
 - Added LR data into package
+- Minor fix concat_obj() function
+- Minor updates on notebooks: SpatialDE limited one CPU; diff-test only z-score
+- Suggest adding `adata.obsm['celltypes']` dataframe to replace `adata.obs`
 
 Version 0.0.8 (14/03/2023)
 --------------------------
