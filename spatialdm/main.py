@@ -27,36 +27,61 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
     :return: secreted signaling weight matrix: adata.obsp['weight'], \
             and adjacent signaling weight matrix: adata.obsp['nearest_neighbors']
     """
+    def _Euclidean_to_RBF(X, l, singlecell=single_cell):
+        """Convert Euclidean distance to RBF distance"""
+        from scipy.sparse import issparse
+        if issparse:
+            rbf_d = X
+            rbf_d[X.nonzero()] = np.exp(-X[X.nonzero()].A**2 / (2 * l ** 2))
+        else:
+            rbf_d = np.exp(- X**2 / (2 * l ** 2))
+        
+        # At single-cell resolution, no within-spot communications
+        if singlecell:
+            np.fill_diagonal(rbf_d, 0)
+        else:
+            rbf_d.setdiag(np.exp(-X.diagonal()**2 / (2 * l ** 2)))
+
+        return rbf_d
+    
     adata.uns['single_cell'] = single_cell
-    pdist = spatial.distance.pdist(adata.obsm['spatial'], 'sqeuclidean')
-    pdist = spatial.distance.squareform(pdist)
-    rbf_d = np.exp(-pdist / (2 * l ** 2))  # RBF Distance
-    if rbf_d.shape[0] > 1000:
-        rbf_d = rbf_d.astype(np.float16)
+    if isinstance(adata.obsm['spatial'], pd.DataFrame):
+        X_loc = adata.obsm['spatial'].values
+    else:
+        X_loc = adata.obsm['spatial']
 
-    nnbrs = NearestNeighbors(n_neighbors=n_nearest_neighbors, algorithm='ball_tree').fit(rbf_d)
-    knn0 = nnbrs.kneighbors_graph(rbf_d).toarray()
-    rbf_d0 = rbf_d * knn0
+    ## large neighborhood for W (5 layers)
+    nnbrs = NearestNeighbors(
+        n_neighbors=n_nearest_neighbors * 31,
+        algorithm='ball_tree', 
+        metric='euclidean'
+    ).fit(X_loc)
+    nbr_d = nnbrs.kneighbors_graph(X_loc, mode='distance')
+    rbf_d = _Euclidean_to_RBF(nbr_d, l, single_cell)
 
+    ## small neighborhood for RBF
+    nnbrs0 = NearestNeighbors(
+        n_neighbors=n_nearest_neighbors, 
+        algorithm='ball_tree', 
+        metric='euclidean'
+    ).fit(X_loc)
+    nbr_d0 = nnbrs0.kneighbors_graph(X_loc, mode='distance')
+    rbf_d0 = _Euclidean_to_RBF(nbr_d0, l, single_cell)
+
+    # NOTE: add more info about cutoff, n_neighbors and n_nearest_neighbors
     if cutoff:
         rbf_d[rbf_d < cutoff] = 0
 
-    elif n_neighbors:
-        nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
-        knn = nbrs.kneighbors_graph(rbf_d).toarray()
-        rbf_d = rbf_d * knn
-
-    if single_cell:
-        np.fill_diagonal(rbf_d, 0)
-        np.fill_diagonal(rbf_d0, 0)
-    else:
-        pass
+    # elif n_neighbors:
+    #     nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
+    #     knn = nbrs.kneighbors_graph(rbf_d).toarray()
+    #     rbf_d = rbf_d * knn
 
     adata.obsp['weight'] = rbf_d * adata.shape[0] / rbf_d.sum()
     adata.obsp['nearest_neighbors'] = rbf_d0 * adata.shape[0] / rbf_d0.sum()
     return
 
-def extract_lr(adata, species, mean='algebra', min_cell=0):
+def extract_lr(adata, species, mean='algebra', min_cell=0, datahost='builtin'):
     """
     find overlapping LRs from CellChatDB
     :param adata: AnnData object
@@ -64,29 +89,46 @@ def extract_lr(adata, species, mean='algebra', min_cell=0):
     :param mean: 'algebra' (default) or 'geometric'
     :param min_cell: for each selected pair, the spots expressing ligand or receptor should be larger than the min,
     respectively.
+    :param datahost: the host of the ligand-receptor data. 'builtin' for package built-in otherwise from figshare
     :return: ligand, receptor, geneInter (containing comprehensive info from CellChatDB) dataframes \
             in adata.uns
     """
     if mean=='geometric':
         from scipy.stats.mstats import gmean
     adata.uns['mean'] = mean
-    if species == 'mouse':
-        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
-        comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
-    elif species == 'human':
-        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638943', header=0, index_col=0)
-        comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
-    elif species == 'zebrafish':
-        geneInter = pd.read_csv('https://figshare.com/ndownloader/files/38756022', header=0, index_col=0)
-        comp = pd.read_csv('https://figshare.com/ndownloader/files/38756019', header=0, index_col=0)
+
+    if datahost == 'package':
+        if species in ['mouse', 'human', 'zerafish']:
+            datapath = './datasets/LR_data/%s-' %(species)
+        else:
+            raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
+        
+        import pkg_resources
+        stream1 = pkg_resources.resource_stream(__name__, datapath + 'interaction_input_CellChatDB.csv.gz')
+        geneInter = pd.read_csv(stream1, index_col=0, compression='gzip')
+
+        stream2 = pkg_resources.resource_stream(__name__, datapath + 'complex_input_CellChatDB.csv')
+        comp = pd.read_csv(stream2, header=0, index_col=0)
     else:
-        raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
+        if species == 'mouse':
+            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638919', index_col=0)
+            comp = pd.read_csv('https://figshare.com/ndownloader/files/36638916', header=0, index_col=0)
+        elif species == 'human':
+            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/36638943', header=0, index_col=0)
+            comp = pd.read_csv('https://figshare.com/ndownloader/files/36638940', header=0, index_col=0)
+        elif species == 'zebrafish':
+            geneInter = pd.read_csv('https://figshare.com/ndownloader/files/38756022', header=0, index_col=0)
+            comp = pd.read_csv('https://figshare.com/ndownloader/files/38756019', header=0, index_col=0)
+        else:
+            raise ValueError("species type: {} is not supported currently. Please have a check.".format(species))
+        
     geneInter = geneInter.sort_values('annotation')
     ligand = geneInter.ligand.values
     receptor = geneInter.receptor.values
     geneInter.pop('ligand')
     geneInter.pop('receptor')
 
+    ## NOTE: the following for loop needs speed up
     t = []
     for i in range(len(ligand)):
         for n in [ligand, receptor]:

@@ -36,7 +36,7 @@ def concat_obj(samples, names, species, method='z-score', fdr=False):
     :param method: 'z-score' or 'permutation'. Should be the commonly selected method from all samples.
     :param fdr: If use fdr or p-values for differential analysis
     """
-    cdata = ann.concat(scsr_matrixamples, join='outer')
+    cdata = ann.concat(samples, join='outer')
     cdata.obs['batch'] = np.repeat(names, [sample.shape[0] for sample in samples])
     cdata.uns['ligand'], cdata.uns['receptor'], cdata.uns['geneInter'] = concat_db(samples, species)
     n_samples = len(samples)

@@ -54,11 +54,17 @@ def generate_colormap(number_of_distinct_colors, number_of_shades = 7):
     return initial_cm
 
 def ligand_ct(adata, pair):
-    ct_L = adata.uns['local_stat']['local_I'][:,adata.uns['selected_spots'].index==pair] * adata.obs
+    ct_L = (
+        adata.uns['local_stat']['local_I'][:,adata.uns['selected_spots'].index==pair] * 
+        adata.obsm['celltypes']
+    )
     return ct_L
 
 def receptor_ct(adata, pair):
-    ct_R = adata.uns['local_stat']['local_I_R'][:,adata.uns['selected_spots'].index==pair] * adata.obs
+    ct_R = (
+        adata.uns['local_stat']['local_I_R'][:,adata.uns['selected_spots'].index==pair] *
+        adata.obsm['celltypes']
+    )
     return ct_R
 
 def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, ncol=1, save=None):
@@ -75,7 +81,8 @@ def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, n
     """
 
     if color_dic is None:
-        ct = adata.obs.columns.sort_values()
+        # adata.obsm['celltypes'] = adata.obs[adata.obs.columns]
+        ct = adata.obsm['celltypes'].columns.sort_values()
         l = len(ct)
         l0 = max(l, 10)
         gen_col = generate_colormap(l0)[:l]
@@ -317,19 +324,26 @@ def plot_selected_pair(sample, pair, spots, selected_ind, figsize, cmap, cmap_l,
     L = sample.uns['ligand'].loc[pair].dropna().values
     R = sample.uns['receptor'].loc[pair].dropna().values
     l1, l2 = len(L), len(R)
+    
+    if isinstance(sample.obsm['spatial'], pd.DataFrame):
+        spatial_loc = sample.obsm['spatial'].values
+    else:
+        spatial_loc = sample.obsm['spatial']
+    
     plt.figure(figsize=figsize)
     plt.subplot(1, 5, 1)
-    plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=spots.loc[pair], cmap=cmap,
+    plt.scatter(spatial_loc[:,0], spatial_loc[:,1], c=spots.loc[pair], cmap=cmap,
                 vmax=1, **kwargs)
     plt_util('Moran: ' + str(sample.uns['local_stat']['n_spots'].loc[pair]) + ' spots')
+    
     for l in range(l1):
         plt.subplot(1, 5, 2 + l)
-        plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,L[l]].X.toarray(),
+        plt.scatter(spatial_loc[:,0], spatial_loc[:,1], c=sample[:,L[l]].X.toarray(),
                     cmap=cmap_l, **kwargs)
         plt_util('Ligand: ' + L[l])
     for l in range(l2):
         plt.subplot(1, 5, 2 + l1 + l)
-        plt.scatter(sample.obsm['spatial'][:,0], sample.obsm['spatial'][:,1], c=sample[:,R[l]].X.toarray(),
+        plt.scatter(spatial_loc[:,0], spatial_loc[:,1], c=sample[:,R[l]].X.toarray(),
                     cmap=cmap_r, **kwargs)
         plt_util('Receptor: ' + R[l])
 
