@@ -48,10 +48,20 @@ def global_I_compute(adata, L_mat, R_mat, n_short_lri, permute=False):
         L_mat0, R_mat0 = L_mat[:, :n_short_lri], R_mat[:, :n_short_lri]
         L_mat1, R_mat1 = L_mat[:, n_short_lri:], R_mat[:, n_short_lri:]
 
-    RV = np.hstack((
-        (adata.obsp['nearest_neighbors'] @ L_mat0 * R_mat0).sum(axis=0),
-        (adata.obsp['weight'] @ L_mat1 * R_mat1).sum(axis=0)
-    ))
+    # Consider to dense array for speedup (numpy's codes is optimised)
+    if adata.shape[0] >= 5000 or ~issparse(adata.obsp['weight']):
+        RV = np.hstack((
+            (adata.obsp['nearest_neighbors'] @ L_mat0 * R_mat0).sum(axis=0),
+            (adata.obsp['weight'] @ L_mat1 * R_mat1).sum(axis=0)
+        ))
+    else:
+        # Note, numpy may use unnessary too many threads
+        # You may use threadpool.threadpool_limits() outside
+        RV = np.hstack((
+            (adata.obsp['nearest_neighbors'].A @ L_mat0 * R_mat0).sum(axis=0),
+            (adata.obsp['weight'].A @ L_mat1 * R_mat1).sum(axis=0)
+        ))
+
     return RV
 
 
@@ -126,8 +136,7 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
     adata.uns['ligand'] = ligand.loc[idx_use]
     adata.uns['receptor'] = receptor.loc[idx_use]
     
-    from scipy.sparse import isspmatrix, hstack, csc_matrix
-    if isspmatrix(adata.X):
+    if issparse(adata.X):
         L_mat = csc_matrix(hstack(L_mat)).T
         R_mat = csc_matrix(hstack(R_mat)).T
         
