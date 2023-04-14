@@ -1,10 +1,11 @@
 # Single-cell sequencing analysis
 anndata>=0.6
 scanpy>=1.5
+SpatialDE
 
 # Data analysis
-numpy>=1.9.0, 
-scipy>=1.4.0, 
+numpy>=1.9.0
+scipy>=1.4.0
 statsmodels>=0.11
 pandas>=0.23.0
 h5py>=2.9.0
@@ -13,6 +14,7 @@ h5py>=2.9.0
 matplotlib>=3.1.2
 holoviews
 seaborn
+selenium
 
 # Machine learning
 scikit-learn>=0.23

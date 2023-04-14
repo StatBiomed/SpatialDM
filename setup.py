@@ -17,7 +17,7 @@ here = path.abspath(path.dirname(__file__))
 exec(open("./spatialdm/version.py").read())
 
 # Get the long description from the relevant file
-long_description=Path("README.rst").read_text("utf-8"),
+long_description=Path("README.rst").read_text("utf-8")
 
 setup(
     name='SpatialDM',
