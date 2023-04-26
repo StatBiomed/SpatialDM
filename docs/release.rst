@@ -7,7 +7,7 @@ TODO
 - rename local_permI to local_permI_L (also global)
 - tentatively: make new adata with LR genes only (if raw exist, other make raw)
 
-Development version
+Version 0.1.0 (15/04/2023)
 -------------------
 - Minor fix with supporting sparse matrix for `adata.X`
 - Disabled the output of local permutaiton data in notebook

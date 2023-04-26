@@ -50,9 +50,12 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
     else:
         X_loc = adata.obsm['spatial']
 
+    if n_neighbors is None:
+        n_neighbors = n_nearest_neighbors * 31
+
     ## large neighborhood for W (5 layers)
     nnbrs = NearestNeighbors(
-        n_neighbors=n_nearest_neighbors * 31,
+        n_neighbors=n_neighbors,
         algorithm='ball_tree', 
         metric='euclidean'
     ).fit(X_loc)
