@@ -1,3 +1,11 @@
+.. automodule:: spatialdm
+
+API
+===
+
+Import SpatialDM as::
+   import spatialdm as sdm
+
 Datasets
 --------
 
