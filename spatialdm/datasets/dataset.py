@@ -9,7 +9,7 @@ _mel = AMetadata(
     url="https://ndownloader.figshare.com/files/40178320",
 )
 
-_SVZ = AMetadata(
+SVZ = AMetadata(
     name="SVZ",
     doc_header="SVZ dataset from `Eng et al <https://doi.org/10.1038/s41586-019-1049-y>`__.",
     shape=(281, 10000),
@@ -76,7 +76,24 @@ for name, var in copy(locals()).items():
     if isinstance(var, AMetadata):
         var._create_function(name, globals())
 
+def A11(file_path: Union[str, Path] = "A1.h5ad"):
+    """A1 adult slice.
+    Pancreatic epithelial and Ngn3-Venus fusion (NVF) cells during secondary transition
+    with transcriptome profiles sampled from embryonic day 15.5.
+    Arguments
+    ---------
+    file_path
+        Path where to save dataset and read it from.
+
+    Returns
+    -------
+    Returns `adata` object
+    """
+    url = "https://figshare.com/ndownloader/files/40178308"
+    adata = read(file_path, backup_url=url, sparse=True, cache=True)
+    adata.var_names_make_unique()
+    return adata
 
 __all__ = [  # noqa: F822
-    "melanoma", "SVZ",
+    "melanoma",
     "A1","A2","A3","A4","A6","A7","A8","A9"]
