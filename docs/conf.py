@@ -22,6 +22,9 @@ from datetime import datetime
 #sys.path.insert(0, os.path.abspath('.'))
 
 from pathlib import Path
+from sphinx.application import Sphinx
+from sphinx.ext import autosummary
+
 HERE = Path(__file__).parent
 sys.path.insert(0, f"{HERE.parent.parent}")
 sys.path.insert(0, os.path.abspath("_ext"))
@@ -100,6 +103,10 @@ import spatialdm
 version = spatialdm.__version__ #'0.0.2' #
 # The full version, including alpha/beta/rc tags.
 release = version
+
+def setup(app):
+    """TODO."""
+    app.add_css_file("custom.css")
 
 def process_generate_options(app: Sphinx):
     """TODO."""
