@@ -61,6 +61,7 @@ SpatialDM manuscript with more details is available on bioRxiv_ now and is curre
    index
    install
    quick_start
+   api
    release
 
 .. toctree::
