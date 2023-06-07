@@ -72,22 +72,6 @@ _A9 = AMetadata(
     url="https://figshare.com/ndownloader/files/40178308",
 )
 
-def A11(file_path: Union[str, Path] = "A1.h5ad"):
-    """A1 adult slice.
-    Pancreatic epithelial and Ngn3-Venus fusion (NVF) cells during secondary transition
-    with transcriptome profiles sampled from embryonic day 15.5.
-    Arguments
-    ---------
-    file_path
-        Path where to save dataset and read it from.
-    Returns
-    -------
-    Returns `adata` object
-    """
-    url = "https://figshare.com/ndownloader/files/40178308"
-    adata = read(file_path, backup_url=url, sparse=True, cache=True)
-    adata.var_names_make_unique()
-    return adata
 
 for name, var in copy(locals()).items():
     if isinstance(var, AMetadata):
