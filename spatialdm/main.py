@@ -73,7 +73,15 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
 
     # NOTE: add more info about cutoff, n_neighbors and n_nearest_neighbors
     if cutoff:
-        rbf_d[rbf_d < cutoff] = 0
+        # not efficient
+        # rbf_d[rbf_d < cutoff] = 0
+        
+        # more efficient: 
+        # https://seanlaw.github.io/2019/02/27/set-values-in-sparse-matrix/
+        nonzero_mask = np.array(rbf_d[rbf_d.nonzero()] < cutoff)[0]
+        rows = rbf_d.nonzero()[0][nonzero_mask]
+        cols = rbf_d.nonzero()[1][nonzero_mask]
+        rbf_d[rows, cols] = 0
 
     # elif n_neighbors:
     #     nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
