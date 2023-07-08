@@ -175,7 +175,7 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
 
     # averaged ligand values
     L1 = [pd.Series(x[0]).dropna().values for x in ligand.values]
-    L_mat = [adata[:, L1[l]].X.astype(np.float)[:, 0] for l in range(len(L1))]
+    L_mat = [adata[:, L1[l]].X.astype(np.float16)[:, 0] for l in range(len(L1))]
     for i, k in enumerate(ligand.index):
         if len(ligand.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
@@ -185,7 +185,7 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
 
     # averaged receptor values
     R1 = [pd.Series(x[0]).dropna().values for x in receptor.values]
-    R_mat = [adata[:, R1[r]].X.astype(np.float)[:, 0] for r in range(len(R1))]
+    R_mat = [adata[:, R1[r]].X.astype(np.float16)[:, 0] for r in range(len(R1))]
     for i, k in enumerate(receptor.index):
         if len(receptor.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
@@ -248,7 +248,7 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=
     if adata.uns['mean'] == 'geometric':
         from scipy.stats.mstats import gmean
     L1 = [pd.Series(x[0]).dropna().values for x in ligand.values]
-    L_mat0 = [raw_norm[:, L1[l]].X.A.astype(np.float)[:, 0] for l in range(len(L1))]
+    L_mat0 = [raw_norm[:, L1[l]].X.A.astype(np.float16)[:, 0] for l in range(len(L1))]
     for i, k in enumerate(ligand.index):
         if len(ligand.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
@@ -258,7 +258,7 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=
 
     # averaged receptor values
     R1 = [pd.Series(x[0]).dropna().values for x in receptor.values]
-    R_mat0 = [raw_norm[:, R1[r]].X.A.astype(np.float)[:, 0] for r in range(len(R1))]
+    R_mat0 = [raw_norm[:, R1[r]].X.A.astype(np.float16)[:, 0] for r in range(len(R1))]
     for i, k in enumerate(receptor.index):
         if len(receptor.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
