@@ -641,7 +641,13 @@ def differential_volcano(sample, pairs=None, legend=None, xmax = 25, xmin = -20)
 
     plt.scatter(diff_cp[sample.uns['tf_df'].sum(1).isin(_range)],
                 -np.log10(sample.uns['diff_fdr'])[sample.uns['tf_df'].sum(1).isin(_range)], s=10, c='grey')
-    plt.xlabel('adult z - fetus z')
+    keys = sample.uns.keys()
+    conditions = []
+    for key in keys:
+        if key.endswith('_specific'):
+            conditions.append(key.replace('_specific',''))
+    label = 'difference between z-score of {0[0]} and {0[1]}'.format(conditions)
+    plt.xlabel(label)
     plt.ylabel('differential fdr (log-likelihood, -log10)')
     plt.xlim([xmin-1,xmax+1])
 
