@@ -219,6 +219,7 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
     if method in ['both', 'z-score']:
         adata.uns['global_stat']['z']['z'] = (
             adata.uns['global_I'] / adata.uns['global_stat']['z']['st'][idx_use])
+        adata.uns['global_stat']['z']['z'] = adata.uns['global_stat']['z']['z'].astype(np.float64)
         adata.uns['global_stat']['z']['z_p'] = stats.norm.sf(
             adata.uns['global_stat']['z']['z'])
     if method in ['both', 'permutation']:
