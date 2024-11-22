@@ -329,40 +329,39 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=
     except Exception:
         pass
 
-def compute_pathway(sample=None,
-                    all_interactions=None,
-        interaction_ls=None, name=None, dic=None):
-    """
-    Compute enriched pathways for a list of pairs or a dic of SpatialDE results.
-    :param sample: spatialdm obj
-    :param ls: a list of LR interaction names for the enrichment analysis
-    :param path_name: str. For later recall sample.path_summary[path_name]
-    :param dic: a dic of SpatialDE results (See tutorial)
-    """
-    if interaction_ls is not None:
-        dic = {name: interaction_ls}
-    if sample is not None:
-        all_interactions = sample.uns['geneInter']
-    df = pd.DataFrame(all_interactions.groupby('pathway_name').interaction_name)
-    df = df.set_index(0)
-    total_feature_num = len(all_interactions)
-    result = []
-    for n,ls in dic.items():
-        qset = set([x.upper() for x in ls]).intersection(all_interactions.index)
-        query_set_size = len(qset)
-        for modulename, members in df.iterrows():
-            module_size = len(members.values[0])
-            overlap_features = qset.intersection(members.values[0])
-            overlap_size = len(overlap_features)
+# def compute_pathway(sample=None,
+#                     all_interactions=None,
+#         interaction_ls=None, name=None, dic=None):
+#     """
+#     Compute enriched pathways for a list of pairs or a dic of SpatialDE results.
+#     :param sample: spatialdm obj
+#     :param ls: a list of LR interaction names for the enrichment analysis
+#     :param path_name: str. For later recall sample.path_summary[path_name]
+#     :param dic: a dic of SpatialDE results (See tutorial)
+#     """
+#     if interaction_ls is not None:
+#         dic = {name: interaction_ls}
+#     if sample is not None:
+#         all_interactions = sample.uns['geneInter']
+#     df = pd.DataFrame(all_interactions.groupby('pathway_name').interaction_name)
+#     df = df.set_index(0)
+#     total_feature_num = len(all_interactions)
+#     result = []
+#     for n,ls in dic.items():
+#         qset = set([x.upper() for x in ls]).intersection(all_interactions.index)
+#         query_set_size = len(qset)
+#         for modulename, members in df.iterrows():
+#             module_size = len(members.values[0])
+#             overlap_features = qset.intersection(members.values[0])
+#             overlap_size = len(overlap_features)
 
-            negneg = total_feature_num + overlap_size - module_size - query_set_size
-            # Fisher's exact test
-            p_FET = stats.fisher_exact([[overlap_size, query_set_size - overlap_size],
-                                        [module_size - overlap_size, negneg]], 'greater')[1]
-            result.append((p_FET, modulename, module_size, overlap_size, overlap_features, n))
-    result = pd.DataFrame(result).set_index(1)
-    result.columns = ['fisher_p', 'pathway_size', 'selected', 'selected_inters', 'name']
-    if sample is not None:
-        sample.uns['pathway_summary'] = result
-    return result
-
+#             negneg = total_feature_num + overlap_size - module_size - query_set_size
+#             # Fisher's exact test
+#             p_FET = stats.fisher_exact([[overlap_size, query_set_size - overlap_size],
+#                                         [module_size - overlap_size, negneg]], 'greater')[1]
+#             result.append((p_FET, modulename, module_size, overlap_size, overlap_features, n))
+#     result = pd.DataFrame(result).set_index(1)
+#     result.columns = ['fisher_p', 'pathway_size', 'selected', 'selected_inters', 'name']
+#     if sample is not None:
+#         sample.uns['pathway_summary'] = result
+#     return result
