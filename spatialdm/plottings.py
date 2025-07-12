@@ -348,7 +348,7 @@ def plot_selected_pair(sample, pair, spots, selected_ind, figsize, cmap, cmap_l,
         plt_util('Receptor: ' + R[l])
 
 def plot_pairs(sample, pairs_to_plot, pdf=None, figsize=(35, 5),
-               cmap='Greens', cmap_l='coolwarm', cmap_r='coolwarm', **kwargs):
+               cmap='Greens', cmap_l='Reds', cmap_r='Reds', **kwargs):
     """
     plot selected spots as well as LR expression.
     :param sample: AnnData object.
@@ -411,15 +411,15 @@ def make_grid_spec(
         return ax.figure, ax.get_subplotspec().subgridspec(nrows, ncols, **kw)
 
 def dot(pathway_res, figsize, markersize, pdf):
-    for i, name in enumerate(pathway_res.name.unique()):
+    for i, name in enumerate(pathway_res.pattern.unique()):
         fig, legend_gs = make_grid_spec(figsize,
                                         nrows=2, ncols=1,
                                         height_ratios=(4, 1))
         dotplot = fig.add_subplot(legend_gs[0])
-        result1 = pathway_res.loc[pathway_res.name == name]
+        result1 = pathway_res.loc[pathway_res.pattern == name]
         result1 = result1.sort_values('selected', ascending=False)
         cts = result1.selected
-        perc = result1.selected / result1.pathway_size
+        perc = result1.selected / result1['total_genes'].apply(len)
         value = -np.log10(result1.loc[:, 'fisher_p'].values)
         size = value * markersize
         im = dotplot.scatter(result1.selected.values, result1.index, c=perc.loc[result1.index].values,
@@ -472,7 +472,7 @@ def dot(pathway_res, figsize, markersize, pdf):
             pdf.savefig()
 
 
-def dot_path(adata, uns_key=None, dic=None, cut_off=1, groups=None, markersize=50,
+def dot_path(pathway_res, cut_off=1, groups=None, markersize=50,
              figsize=(6, 8), pdf=None,
              **kwargs):
     """
@@ -490,13 +490,11 @@ def dot_path(adata, uns_key=None, dic=None, cut_off=1, groups=None, markersize=5
     """
     # plt.figure(figsize=figsize)
 
-    if uns_key is not None:
-        dic = {uns_key: adata.uns[uns_key]}
-    pathway_res = compute_pathway(adata, dic=dic)
+
     pathway_res = pathway_res[pathway_res.selected >= cut_off]
     if groups is not None:
-        pathway_res = pathway_res.loc[pathway_res.name.isin(groups)]
-    n_subplot = len(pathway_res.name.unique())
+        pathway_res = pathway_res.loc[pathway_res.pattern.isin(groups)]
+    n_subplot = len(pathway_res.pattern.unique())
     if pdf != None:
         with PdfPages(pdf + '.pdf') as pdf:
             dot(pathway_res, figsize, markersize, pdf)
@@ -641,7 +639,13 @@ def differential_volcano(sample, pairs=None, legend=None, xmax = 25, xmin = -20)
 
     plt.scatter(diff_cp[sample.uns['tf_df'].sum(1).isin(_range)],
                 -np.log10(sample.uns['diff_fdr'])[sample.uns['tf_df'].sum(1).isin(_range)], s=10, c='grey')
-    plt.xlabel('adult z - fetus z')
+    keys = sample.uns.keys()
+    conditions = []
+    for key in keys:
+        if key.endswith('_specific'):
+            conditions.append(key.replace('_specific',''))
+    label = 'difference between z-score of {0[0]} and {0[1]}'.format(conditions)
+    plt.xlabel(label)
     plt.ylabel('differential fdr (log-likelihood, -log10)')
     plt.xlim([xmin-1,xmax+1])
 

@@ -8,10 +8,10 @@ from scipy import spatial
 from threadpoolctl import threadpool_limits
 from .utils import *
 from itertools import zip_longest
-import anndata as ann
+import anndata as ann 
 
 
-def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6, single_cell=False):
+def weight_matrix(adata, l=None, cutoff=0.1, n_neighbors=None, n_nearest_neighbors=6, single_cell=False, eff_dist=None):
     """
     compute weight matrix based on radial basis kernel.
     cutoff & n_neighbors are two alternative options to restrict signaling range.
@@ -50,9 +50,17 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
     else:
         X_loc = adata.obsm['spatial']
 
+    if n_neighbors is None:
+        n_neighbors = n_nearest_neighbors * 31
+
+    if l is None:
+        if eff_dist is None:
+            raise ValueError('At least one of l and eff_dist params should be specified')
+        else:
+            l = np.sqrt(-eff_dist/(2*np.log(cutoff)))
     ## large neighborhood for W (5 layers)
     nnbrs = NearestNeighbors(
-        n_neighbors=n_nearest_neighbors * 31,
+        n_neighbors=n_neighbors,
         algorithm='ball_tree', 
         metric='euclidean'
     ).fit(X_loc)
@@ -69,8 +77,16 @@ def weight_matrix(adata, l, cutoff=None, n_neighbors=None, n_nearest_neighbors=6
     rbf_d0 = _Euclidean_to_RBF(nbr_d0, l, single_cell)
 
     # NOTE: add more info about cutoff, n_neighbors and n_nearest_neighbors
-    if cutoff:
-        rbf_d[rbf_d < cutoff] = 0
+    #if cutoff:
+        # not efficient
+        # rbf_d[rbf_d < cutoff] = 0
+        
+        # more efficient: 
+        # https://seanlaw.github.io/2019/02/27/set-values-in-sparse-matrix/
+    nonzero_mask = np.array(rbf_d[rbf_d.nonzero()] < cutoff)[0]
+    rows = rbf_d.nonzero()[0][nonzero_mask]
+    cols = rbf_d.nonzero()[1][nonzero_mask]
+    rbf_d[rows, cols] = 0
 
     # elif n_neighbors:
     #     nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
@@ -325,6 +341,52 @@ def read_spatialdm_h5ad(filename):
     restore_uns_na(adata)
     return adata
 
+def compute_pathway(sample=None,
+                    all_interactions=None,
+        interaction_ls=None, name=None, dic=None):
+    """
+    Compute enriched pathways for a list of pairs or a dic of SpatialDE results.
+    :param sample: spatialdm obj
+    :param ls: a list of LR interaction names for the enrichment analysis
+    :param path_name: str. For later recall sample.path_summary[path_name]
+    :param dic: a dic of SpatialDE results (See tutorial)
+    """
+    if interaction_ls is not None:
+        dic = {name: interaction_ls}
+    if sample is not None:
+        all_interactions = sample.uns['geneInter']
+    df = pd.DataFrame(all_interactions.groupby('pathway_name').interaction_name)
+    df = df.set_index(0)
+    total_feature_num = len(all_interactions)
+    result = []
+    all_path_genes = set(np.concatenate(list(dic.values())))
+    all_path_genes = {x.upper() for x in all_path_genes}.intersection(all_interactions.index)
+    for n,ls in dic.items():
+        qset = set([x.upper() for x in ls]).intersection(all_interactions.index)
+        query_set_size = len(qset)
+        background = all_path_genes - qset
+        for modulename, members in df.iterrows():
+            module_size = len(members[1])
+            overlap_features = qset.intersection(members[1])
+            overlap_size = len(overlap_features)
+
+            background_mapped = background.intersection(members[1])
+            background_unmapped = background-background_mapped
+
+            negneg = total_feature_num + overlap_size - module_size - query_set_size
+            # Fisher's exact test
+            p_FET = stats.fisher_exact([[overlap_size, query_set_size - overlap_size],
+                                        [module_size - overlap_size, negneg]], 'greater')[1]
+            #result.append((p_FET, modulename, module_size, overlap_size, overlap_features, n))
+            result.append((modulename,members[1],qset,overlap_features,background_mapped,
+                           background_unmapped,overlap_size,p_FET,n))
+    result = pd.DataFrame(result).set_index(0)
+    result.index.name = 'pathway'
+    result.columns = ['total_genes', 'query_genes', 'overlapped_genes','background_mapped_genes', 
+                      'background_unmapped_genes', 'selected','fisher_p','pattern']
+    # if sample is not None:
+    #     sample.uns['pathway_summary'] = result
+    return result
 #     def save_spataildm(adata, result_dir, exclude=[]):
 #         """
 #         save spataildm output to a specified folder
@@ -387,5 +449,3 @@ def read_spatialdm_h5ad(filename):
 #             for k in _data.keys():
 #                 read_sample.__dict__[k] = _data[k]
 #     return read_sample
-
-

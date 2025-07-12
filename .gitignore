@@ -109,3 +109,6 @@ venv.bak/
 # test and data
 data/outs
 temp/
+
+#output
+tutorial/*.h5ad

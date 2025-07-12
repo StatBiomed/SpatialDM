@@ -10,6 +10,70 @@ from tqdm import tqdm
 from scipy.sparse import csc_matrix, csr_matrix, issparse, hstack
 
 
+# pure statistics for bivariate Moran's R
+def Moran_R_std(spatial_W, by_trace=False):
+    """Calculate standard deviation of Moran's R under the null distribution.
+    """
+    N = spatial_W.shape[0]
+    
+    if by_trace:
+        W = spatial_W.copy()
+        H = np.identity(N) - np.ones((N, N)) / N
+        HWH = H.dot(W.dot(H))
+        var = np.trace(HWH.dot(HWH)) * N**2 / (np.sum(W) * (N-1))**2
+    else:
+        if issparse(spatial_W):
+            nm = N ** 2 * spatial_W.multiply(spatial_W.T).sum() \
+                - 2 * N * (spatial_W.sum(0) @ spatial_W.sum(1)).sum() \
+                + spatial_W.sum() ** 2
+        else:
+            nm = N ** 2 * (spatial_W * spatial_W.T).sum() \
+                - 2 * N * (spatial_W.sum(1) * spatial_W.sum(0)).sum() \
+                + spatial_W.sum() ** 2
+        dm = N ** 2 * (N - 1) ** 2
+        var = nm / dm
+    
+    return np.sqrt(var)
+
+
+def Moran_R(X, Y, spatial_W, standardise=True, nproc=1):
+    """Computing Moran's R for pairs of variables
+    
+    :param X: Variable 1, (n_sample, n_variables) or (n_sample, )
+    :param Y: Variable 2, (n_sample, n_variables) or (n_sample, )
+    :param spatial_W: spatial weight matrix, sparse or dense, (n_sample, n_sample)
+    :param nproc: default to 1. Numpy may use more without much speedup.
+    
+    :return: (Moran's R, z score and p values)
+    """
+    if len(X.shape) < 2:
+        X = X.reshape(-1, 1)
+    if len(Y.shape) < 2:
+        Y = Y.reshape(-1, 1)
+        
+    if standardise:
+        X = (X - np.mean(X, axis=0, keepdims=True)) / np.std(X, axis=0, keepdims=True)
+        Y = (Y - np.mean(Y, axis=0, keepdims=True)) / np.std(Y, axis=0, keepdims=True)
+        
+    # Consider to dense array for speedup (numpy's codes is optimised)
+    if X.shape[0] <= 5000 and issparse(spatial_W):
+        # Note, numpy may use unnessary too many threads
+        # You may use threadpool.threadpool_limits() outside
+        from threadpoolctl import threadpool_limits
+        
+        with threadpool_limits(limits=nproc, user_api='blas'):
+            R_val = (spatial_W.A @ X * Y).sum(axis=0) / np.sum(spatial_W)
+    else:
+        # we assume it's sparse spatial_W when sample size > 5000
+        R_val = (spatial_W @ X * Y).sum(axis=0) / np.sum(spatial_W)
+        
+    _R_std = Moran_R_std(spatial_W)
+    R_z_score = R_val / _R_std
+    R_p_val = stats.norm.sf(R_z_score)
+    
+    return R_val, R_z_score, R_p_val
+
+
 # global variance
 def globle_st_compute(adata):
     N = adata.shape[0]
@@ -48,10 +112,20 @@ def global_I_compute(adata, L_mat, R_mat, n_short_lri, permute=False):
         L_mat0, R_mat0 = L_mat[:, :n_short_lri], R_mat[:, :n_short_lri]
         L_mat1, R_mat1 = L_mat[:, n_short_lri:], R_mat[:, n_short_lri:]
 
-    RV = np.hstack((
-        (adata.obsp['nearest_neighbors'] @ L_mat0 * R_mat0).sum(axis=0),
-        (adata.obsp['weight'] @ L_mat1 * R_mat1).sum(axis=0)
-    ))
+    # Consider to dense array for speedup (numpy's codes is optimised)
+    if adata.shape[0] >= 5000 or ~issparse(adata.obsp['weight']):
+        RV = np.hstack((
+            (adata.obsp['nearest_neighbors'] @ L_mat0 * R_mat0).sum(axis=0),
+            (adata.obsp['weight'] @ L_mat1 * R_mat1).sum(axis=0)
+        ))
+    else:
+        # Note, numpy may use unnessary too many threads
+        # You may use threadpool.threadpool_limits() outside
+        RV = np.hstack((
+            (adata.obsp['nearest_neighbors'].A @ L_mat0 * R_mat0).sum(axis=0),
+            (adata.obsp['weight'].A @ L_mat1 * R_mat1).sum(axis=0)
+        ))
+
     return RV
 
 
@@ -101,7 +175,7 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
 
     # averaged ligand values
     L1 = [pd.Series(x[0]).dropna().values for x in ligand.values]
-    L_mat = [adata[:, L1[l]].X.astype(np.float)[:, 0] for l in range(len(L1))]
+    L_mat = [adata[:, L1[l]].X.astype(np.float64)[:, 0] for l in range(len(L1))]
     for i, k in enumerate(ligand.index):
         if len(ligand.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
@@ -111,7 +185,7 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
 
     # averaged receptor values
     R1 = [pd.Series(x[0]).dropna().values for x in receptor.values]
-    R_mat = [adata[:, R1[r]].X.astype(np.float)[:, 0] for r in range(len(R1))]
+    R_mat = [adata[:, R1[r]].X.astype(np.float64)[:, 0] for r in range(len(R1))]
     for i, k in enumerate(receptor.index):
         if len(receptor.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
@@ -126,8 +200,7 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
     adata.uns['ligand'] = ligand.loc[idx_use]
     adata.uns['receptor'] = receptor.loc[idx_use]
     
-    from scipy.sparse import isspmatrix, hstack, csc_matrix
-    if isspmatrix(adata.X):
+    if issparse(adata.X):
         L_mat = csc_matrix(hstack(L_mat)).T
         R_mat = csc_matrix(hstack(R_mat)).T
         
@@ -145,7 +218,8 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
     ## Calculate p values
     if method in ['both', 'z-score']:
         adata.uns['global_stat']['z']['z'] = (
-            adata.uns['global_I'] / adata.uns['global_stat']['z']['st'])
+            adata.uns['global_I'] / adata.uns['global_stat']['z']['st'][idx_use])
+        adata.uns['global_stat']['z']['z'] = adata.uns['global_stat']['z']['z'].astype(np.float64)
         adata.uns['global_stat']['z']['z_p'] = stats.norm.sf(
             adata.uns['global_stat']['z']['z'])
     if method in ['both', 'permutation']:
@@ -175,7 +249,7 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=
     if adata.uns['mean'] == 'geometric':
         from scipy.stats.mstats import gmean
     L1 = [pd.Series(x[0]).dropna().values for x in ligand.values]
-    L_mat0 = [raw_norm[:, L1[l]].X.A.astype(np.float)[:, 0] for l in range(len(L1))]
+    L_mat0 = [raw_norm[:, L1[l]].X.A.astype(np.float64)[:, 0] for l in range(len(L1))]
     for i, k in enumerate(ligand.index):
         if len(ligand.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
@@ -185,7 +259,7 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=
 
     # averaged receptor values
     R1 = [pd.Series(x[0]).dropna().values for x in receptor.values]
-    R_mat0 = [raw_norm[:, R1[r]].X.A.astype(np.float)[:, 0] for r in range(len(R1))]
+    R_mat0 = [raw_norm[:, R1[r]].X.A.astype(np.float64)[:, 0] for r in range(len(R1))]
     for i, k in enumerate(receptor.index):
         if len(receptor.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
@@ -255,40 +329,39 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=
     except Exception:
         pass
 
-def compute_pathway(sample=None,
-                    all_interactions=None,
-        interaction_ls=None, name=None, dic=None):
-    """
-    Compute enriched pathways for a list of pairs or a dic of SpatialDE results.
-    :param sample: spatialdm obj
-    :param ls: a list of LR interaction names for the enrichment analysis
-    :param path_name: str. For later recall sample.path_summary[path_name]
-    :param dic: a dic of SpatialDE results (See tutorial)
-    """
-    if interaction_ls is not None:
-        dic = {name: interaction_ls}
-    if sample is not None:
-        all_interactions = sample.uns['geneInter']
-    df = pd.DataFrame(all_interactions.groupby('pathway_name').interaction_name)
-    df = df.set_index(0)
-    total_feature_num = len(all_interactions)
-    result = []
-    for n,ls in dic.items():
-        qset = set([x.upper() for x in ls]).intersection(all_interactions.index)
-        query_set_size = len(qset)
-        for modulename, members in df.iterrows():
-            module_size = len(members.values[0])
-            overlap_features = qset.intersection(members.values[0])
-            overlap_size = len(overlap_features)
+# def compute_pathway(sample=None,
+#                     all_interactions=None,
+#         interaction_ls=None, name=None, dic=None):
+#     """
+#     Compute enriched pathways for a list of pairs or a dic of SpatialDE results.
+#     :param sample: spatialdm obj
+#     :param ls: a list of LR interaction names for the enrichment analysis
+#     :param path_name: str. For later recall sample.path_summary[path_name]
+#     :param dic: a dic of SpatialDE results (See tutorial)
+#     """
+#     if interaction_ls is not None:
+#         dic = {name: interaction_ls}
+#     if sample is not None:
+#         all_interactions = sample.uns['geneInter']
+#     df = pd.DataFrame(all_interactions.groupby('pathway_name').interaction_name)
+#     df = df.set_index(0)
+#     total_feature_num = len(all_interactions)
+#     result = []
+#     for n,ls in dic.items():
+#         qset = set([x.upper() for x in ls]).intersection(all_interactions.index)
+#         query_set_size = len(qset)
+#         for modulename, members in df.iterrows():
+#             module_size = len(members.values[0])
+#             overlap_features = qset.intersection(members.values[0])
+#             overlap_size = len(overlap_features)
 
-            negneg = total_feature_num + overlap_size - module_size - query_set_size
-            # Fisher's exact test
-            p_FET = stats.fisher_exact([[overlap_size, query_set_size - overlap_size],
-                                        [module_size - overlap_size, negneg]], 'greater')[1]
-            result.append((p_FET, modulename, module_size, overlap_size, overlap_features, n))
-    result = pd.DataFrame(result).set_index(1)
-    result.columns = ['fisher_p', 'pathway_size', 'selected', 'selected_inters', 'name']
-    if sample is not None:
-        sample.uns['pathway_summary'] = result
-    return result
-
+#             negneg = total_feature_num + overlap_size - module_size - query_set_size
+#             # Fisher's exact test
+#             p_FET = stats.fisher_exact([[overlap_size, query_set_size - overlap_size],
+#                                         [module_size - overlap_size, negneg]], 'greater')[1]
+#             result.append((p_FET, modulename, module_size, overlap_size, overlap_features, n))
+#     result = pd.DataFrame(result).set_index(1)
+#     result.columns = ['fisher_p', 'pathway_size', 'selected', 'selected_inters', 'name']
+#     if sample is not None:
+#         sample.uns['pathway_summary'] = result
+#     return result
