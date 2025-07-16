@@ -1,10 +1,21 @@
-.. automodule:: spatialdm
-
 API
 ===
 
+.. automodule:: spatialdm
+
 Import SpatialDM as::
    import spatialdm as sdm
+
+
+Functions
+---------
+
+.. autofunction:: spatialdm.stats.rbfweight
+
+.. autofunction:: spatialdm.stats.Moran_R
+
+
+
 
 Datasets
 --------

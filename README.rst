@@ -5,15 +5,20 @@ SpatialDM: Spatial Direct Messaging Detected by bivariate Moran
 About
 =====
 
-SpatialDM (Spatial Direct Messaging, or Spatial co-expressed ligand and receptor Detected by Moran's bivariant extension), a statistical model and toolbox to identify the spatial co-expression (i.e., spatial association) between a pair of ligand and receptor. \
+SpatialDM (Spatial Direct Messaging, or Spatial co-expressed ligand and 
+receptor Detected by Moran's bivariant extension), a statistical model and 
+toolbox to identify the spatial co-expression (i.e., spatial association) 
+between a pair of ligand and receptor. \
 
-Uniquely, SpatialDM can distinguish co-expressed ligand and receptor pairs from spatially separating pairs, and identify the spots of interaction.
+Uniquely, SpatialDM can distinguish co-expressed ligand and receptor pairs from 
+spatially separating pairs, and identify the spots of interaction.
 
 .. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/AvsB-1.png?raw=true
    :width: 900px
    :align: center
 
-With the analytical testing method, SpatialDM is scalable to 1 million spots within 12 min with only one core.
+With the analytical testing method, SpatialDM is scalable to 1 million spots 
+within 12 min with only one core.
 
 .. image:: https://github.com/StatBiomed/SpatialDM/blob/main/docs/.figs/runtime_aug16-1.png?raw=true
    :width: 600px
@@ -97,7 +102,8 @@ The full manual is at https://spatialdm.readthedocs.io, including:
 References
 ==========
 
-SpatialDM manuscript with more details is available on bioRxiv_ now and is currently under review.
-
-.. _bioRxiv: https://www.biorxiv.org/content/10.1101/2022.08.19.504616v1/
+| Li, Z., Wang, T., Liu, P., & Huang, Y. (2023). SpatialDM for rapid 
+  identification of spatially co-expressed ligand–receptor and revealing 
+  cell–cell communication patterns. Nature communications, 14(1), 3995.
+  https://www.nature.com/articles/s41467-023-39608-w
 

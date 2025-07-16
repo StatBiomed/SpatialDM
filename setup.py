@@ -1,7 +1,7 @@
 """
 SpatialDM: Spatial co-expression Detected by bivariate Moran
 SpatialDM: Spatial ligand-receptor co-expression for Direct Messaging
-See: https://github.com/leeyoyohku/SpatialDM
+See: https://github.com/StatBiomed/SpatialDM
 """
 
 # Always prefer setuptools over distutils
@@ -31,7 +31,7 @@ setup(
     long_description=long_description,
 
     # The project's main homepage.
-    url='https://github.com/leeyoyohku/SpatialDM',
+    url='https://github.com/StatBiomed/SpatialDM',
 
     # Author details
     author=['Zhouxuan Li', 'Tianjie Wang', 'Yuanhua Huang'],
