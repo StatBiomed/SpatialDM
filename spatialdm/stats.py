@@ -149,20 +149,20 @@ def Moran_R(X, Y, spatial_W, standardise=True, nproc=1):
 
     Examples
     --------
+
     .. plot::
 
         >>> import numpy as np
-        >>> from spatialdm.stats import Moran_R
+        >>> from spatialdm.stats import rbfweight, Moran_R
         >>> np.random.seed(0)
         >>> X1 = np.random.rand(100, 5)
         >>> X2 = np.random.rand(100, 5)
         >>> X2[:-1, 0], X2[:, 1], X2[1:, 2] = X1[1:, 0], X1[:, 1], X1[:-1, 2]
         >>> X2 = X2 + 0.01 * np.random.rand(100, 5)
         >>> X_loc = np.vstack([np.repeat(range(10), 10), np.tile(range(10), 10)]).T
-        >>> spatial_W, KNN_connect = sdm.stats.rbfKNN(X_loc, l=1.2, n_neighbors=16)
+        >>> spatial_W, KNN_connect = rbfweight(X_loc, l=1.2, n_neighbors=16)
         >>> R, z, p = Moran_R(X1, X2, spatial_W)
-        >>> R, z, p
-
+        >>> print(R, z, p)
         
         >>> import matplotlib.pyplot as plt
         >>> fig = plt.figure(figsize=(6, 3))

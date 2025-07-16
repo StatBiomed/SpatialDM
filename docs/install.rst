@@ -13,6 +13,6 @@ development) version by the following command line:
 
 .. code-block:: bash
 
-   pip install -U git+https://github.com/leeyoyohku/SpatialDM
+   pip install -U git+https://github.com/StatBiomed/SpatialDM
 
 Installation time: < 1 min

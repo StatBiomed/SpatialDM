@@ -4,6 +4,7 @@ API
 .. automodule:: spatialdm
 
 Import SpatialDM as::
+
    import spatialdm as sdm
 
 

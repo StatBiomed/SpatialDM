@@ -4,8 +4,8 @@
     :target: https://pypi.org/project/SpatialDM/
 .. |Docs| image:: https://readthedocs.org/projects/spatialdm/badge/?version=latest
    :target: https://SpatialDM.readthedocs.io
-.. |Build Status| image:: https://travis-ci.org/leeyoyohku/SpatialDM.svg?branch=main
-   :target: https://travis-ci.org/leeyoyohku/SpatialDM
+.. |Build Status| image:: https://travis-ci.org/StatBiomed/SpatialDM.svg?branch=main
+   :target: https://travis-ci.org/StatBiomed/SpatialDM
    
 ====
 Home
