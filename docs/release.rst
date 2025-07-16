@@ -7,6 +7,13 @@ TODO
 - rename local_permI to local_permI_L (also global)
 - tentatively: make new adata with LR genes only (if raw exist, other make raw)
 
+Version 0.3.0 (16/07/2025)
+- support SparseAEH for spatial clustering
+- support standardalone spatialdm.stat.Moran_R
+- support standardalone spatialdm.stat.rbfweight
+- update documentation with API and examples for `Moran_R` and `rbfweight`
+- update documentation for the melanoma example
+
 Version 0.1.0 (15/04/2023)
 -------------------
 - Minor fix with supporting sparse matrix for `adata.X`

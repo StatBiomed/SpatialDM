@@ -47,9 +47,11 @@ Please refer to our tutorials for details:
 
 References
 ==========
-SpatialDM manuscript with more details is available on bioRxiv_ now and is currently under review.
 
-.. _bioRxiv: https://www.biorxiv.org/content/10.1101/2022.08.19.504616v1/
+| Li, Z., Wang, T., Liu, P., & Huang, Y. (2023). SpatialDM for rapid 
+  identification of spatially co-expressed ligand–receptor and revealing 
+  cell–cell communication patterns. Nature communications, 14(1), 3995.
+  https://www.nature.com/articles/s41467-023-39608-w
 
 
 

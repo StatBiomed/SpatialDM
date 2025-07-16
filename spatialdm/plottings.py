@@ -7,16 +7,11 @@ import scipy.stats as stats
 import seaborn as sns
 #from utils import compute_pathway
 from .utils import *
-import holoviews as hv
-from holoviews import opts, dim
 from bokeh.io import output_file, show
 from bokeh.plotting import figure
 from bokeh.io import export_svg, export_png
 from bokeh.layouts import gridplot
 from scipy.sparse import csc_matrix
-
-hv.extension('bokeh')
-hv.output(size=200)
 
 import math
 from matplotlib.cm import hsv
@@ -79,6 +74,11 @@ def chord_celltype(adata, pairs, color_dic=None, title=None, min_quantile=0.5, n
     :param save: 'svg' or 'png' or None
     :return: Chord diagram showing enriched cell types. Edge color indicates source cell types.
     """
+
+    import holoviews as hv
+    from holoviews import opts, dim
+    hv.extension('bokeh')
+    hv.output(size=200)
 
     if color_dic is None:
         # adata.obsm['celltypes'] = adata.obs[adata.obs.columns]
@@ -156,6 +156,11 @@ def chord_LR(adata, senders, receivers, color_dic=None,
         :param save: 'svg' or 'png' or None
         :return: Chord diagram showing enriched interactions. Edge color indicates ligand.
     """
+    import holoviews as hv
+    from holoviews import opts, dim
+    hv.extension('bokeh')
+    hv.output(size=200)
+
     if color_dic is None:
         subgeneInter = adata.uns['geneInter'].loc[adata.uns['selected_spots'].index]
         type_interaction = subgeneInter.annotation
@@ -240,6 +245,11 @@ def chord_celltype_allpairs(adata, color_dic=None,
        :return: 3 chord diagrams showing enriched cell types, one for adjacent signaling, \
        one for secreted signaling, and the other for the aggregated.
        """
+
+    import holoviews as hv
+    from holoviews import opts, dim
+    hv.extension('bokeh')
+    hv.output(size=200)
 
     if color_dic is None:
         ct = adata.obs.columns.sort_values()

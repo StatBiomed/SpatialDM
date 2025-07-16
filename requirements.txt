@@ -1,7 +1,7 @@
 # Single-cell sequencing analysis
 anndata>=0.6
 scanpy>=1.5
-SpatialDE
+SparseAEH
 
 # Data analysis
 numpy>=1.9.0
