@@ -37,7 +37,7 @@ def rbfweight(X_loc, l=None, cutoff=0.1, n_neighbors=None, n_neighbor_layers=6,
         >>> spatial_W, KNN_connect = rbfweight(X_loc, l=1.2, n_neighbors=16)
 
         >>> import matplotlib.pyplot as plt
-        >>> plt.scatter(X_loc[:, 0], X_loc[:, 1], c=spatial_W.A[35], s=100)
+        >>> plt.scatter(X_loc[:, 0], X_loc[:, 1], c=spatial_W.toarray()[35], s=100)
         >>> plt.show()
     """
     def _Euclidean_to_RBF(X, l, single_cell=single_cell):
@@ -189,7 +189,7 @@ def Moran_R(X, Y, spatial_W, standardise=True, nproc=1):
         from threadpoolctl import threadpool_limits
         
         with threadpool_limits(limits=nproc, user_api='blas'):
-            R_val = (spatial_W.A @ X * Y).sum(axis=0) / np.sum(spatial_W)
+            R_val = (spatial_W.toarray() @ X * Y).sum(axis=0) / np.sum(spatial_W)
     else:
         # we assume it's sparse spatial_W when sample size > 5000
         R_val = (spatial_W @ X * Y).sum(axis=0) / np.sum(spatial_W)

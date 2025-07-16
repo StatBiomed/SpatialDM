@@ -60,8 +60,8 @@ def global_I_compute(adata, L_mat, R_mat, n_short_lri, permute=False):
         # Note, numpy may use unnessary too many threads
         # You may use threadpool.threadpool_limits() outside
         RV = np.hstack((
-            (adata.obsp['nearest_neighbors'].A @ L_mat0 * R_mat0).sum(axis=0),
-            (adata.obsp['weight'].A @ L_mat1 * R_mat1).sum(axis=0)
+            (adata.obsp['nearest_neighbors'].toarray() @ L_mat0 * R_mat0).sum(axis=0),
+            (adata.obsp['weight'].toarray() @ L_mat1 * R_mat1).sum(axis=0)
         ))
 
     return RV
@@ -92,7 +92,7 @@ def _standardise(X, Local=False, axis=None):
     """
     N = len(X)
     if type(X[0]) == csr_matrix:
-        X = np.array([i.A[:,0] for i in X])
+        X = np.array([i.toarray()[:,0] for i in X])
         # X = X.T
     if Local==False:
         X = X.T
@@ -170,7 +170,7 @@ def pair_selection_matrix(adata, n_perm, sel_ind, method):
 
 def norm_max(X):
     if type(X)==csr_matrix:
-        X=X.A[0]
+        X=X.toarray()[0]
     X = X/X.max()
     X=np.where(np.isnan(X), 0, X)
     return X
@@ -187,23 +187,23 @@ def spot_selection_matrix(adata, ligand, receptor, ind, n_perm, method, scale_X=
     if adata.uns['mean'] == 'geometric':
         from scipy.stats.mstats import gmean
     L1 = [pd.Series(x[0]).dropna().values for x in ligand.values]
-    L_mat0 = [raw_norm[:, L1[l]].X.A.astype(np.float64)[:, 0] for l in range(len(L1))]
+    L_mat0 = [raw_norm[:, L1[l]].X.toarray().astype(np.float64)[:, 0] for l in range(len(L1))]
     for i, k in enumerate(ligand.index):
         if len(ligand.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
-                L_mat0[i] = gmean(raw_norm[:, ligand.loc[k].dropna()].X.A, axis=1)
+                L_mat0[i] = gmean(raw_norm[:, ligand.loc[k].dropna()].X.toarray(), axis=1)
             else:
-                L_mat0[i] = raw_norm[:, ligand.loc[k].dropna()].X.A.mean(1)
+                L_mat0[i] = raw_norm[:, ligand.loc[k].dropna()].X.toarray().mean(1)
 
     # averaged receptor values
     R1 = [pd.Series(x[0]).dropna().values for x in receptor.values]
-    R_mat0 = [raw_norm[:, R1[r]].X.A.astype(np.float64)[:, 0] for r in range(len(R1))]
+    R_mat0 = [raw_norm[:, R1[r]].X.toarray().astype(np.float64)[:, 0] for r in range(len(R1))]
     for i, k in enumerate(receptor.index):
         if len(receptor.loc[k].dropna()) > 1:
             if adata.uns['mean'] == 'geometric':
-                R_mat0[i] = gmean(raw_norm[:, receptor.loc[k].dropna()].X.A, axis=1)
+                R_mat0[i] = gmean(raw_norm[:, receptor.loc[k].dropna()].X.toarray(), axis=1)
             else:
-                R_mat0[i] = raw_norm[:, receptor.loc[k].dropna()].X.A.mean(1)
+                R_mat0[i] = raw_norm[:, receptor.loc[k].dropna()].X.toarray().mean(1)
     n_short_lri = (adata.uns['geneInter'].loc[ligand.index, 'annotation'] \
                    != 'Secreted Signaling').sum()
     ranges = [np.arange(n_short_lri), np.arange(n_short_lri, len(L1))]

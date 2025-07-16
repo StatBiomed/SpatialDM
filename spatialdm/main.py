@@ -11,7 +11,8 @@ from itertools import zip_longest
 import anndata as ann 
 
 
-def weight_matrix(adata, l=None, cutoff=0.1, n_neighbors=None, n_nearest_neighbors=6, single_cell=False, eff_dist=None):
+def weight_matrix(adata, l=None, cutoff=0.1, n_neighbors=None, 
+    n_nearest_neighbors=6, single_cell=False, eff_dist=None):
     """
     compute weight matrix based on radial basis kernel.
     cutoff & n_neighbors are two alternative options to restrict signaling range.
@@ -26,75 +27,23 @@ def weight_matrix(adata, l=None, cutoff=0.1, n_neighbors=None, n_nearest_neighbo
     :param single_cell: if single cell resolution, diagonal will be made 0.
     :return: secreted signaling weight matrix: adata.obsp['weight'], \
             and adjacent signaling weight matrix: adata.obsp['nearest_neighbors']
-    """
-    def _Euclidean_to_RBF(X, l, singlecell=single_cell):
-        """Convert Euclidean distance to RBF distance"""
-        from scipy.sparse import issparse
-        if issparse:
-            rbf_d = X
-            rbf_d[X.nonzero()] = np.exp(-X[X.nonzero()].A**2 / (2 * l ** 2))
-        else:
-            rbf_d = np.exp(- X**2 / (2 * l ** 2))
-        
-        # At single-cell resolution, no within-spot communications
-        if singlecell:
-            np.fill_diagonal(rbf_d, 0)
-        else:
-            rbf_d.setdiag(np.exp(-X.diagonal()**2 / (2 * l ** 2)))
 
-        return rbf_d
-    
+    Check more by spatialdm.stats.rbfweight()
+    """
+    from .stats import rbfweight
+
     adata.uns['single_cell'] = single_cell
     if isinstance(adata.obsm['spatial'], pd.DataFrame):
         X_loc = adata.obsm['spatial'].values
     else:
         X_loc = adata.obsm['spatial']
 
-    if n_neighbors is None:
-        n_neighbors = n_nearest_neighbors * 31
+    spatial_W, KNN_connect = rbfweight(X_loc, l=l, cutoff=cutoff, 
+        n_neighbors=n_neighbors, n_neighbor_layers=n_nearest_neighbors,
+        single_cell=single_cell, eff_dist=eff_dist)
 
-    if l is None:
-        if eff_dist is None:
-            raise ValueError('At least one of l and eff_dist params should be specified')
-        else:
-            l = np.sqrt(-eff_dist/(2*np.log(cutoff)))
-    ## large neighborhood for W (5 layers)
-    nnbrs = NearestNeighbors(
-        n_neighbors=n_neighbors,
-        algorithm='ball_tree', 
-        metric='euclidean'
-    ).fit(X_loc)
-    nbr_d = nnbrs.kneighbors_graph(X_loc, mode='distance')
-    rbf_d = _Euclidean_to_RBF(nbr_d, l, single_cell)
-
-    ## small neighborhood for RBF
-    nnbrs0 = NearestNeighbors(
-        n_neighbors=n_nearest_neighbors, 
-        algorithm='ball_tree', 
-        metric='euclidean'
-    ).fit(X_loc)
-    nbr_d0 = nnbrs0.kneighbors_graph(X_loc, mode='distance')
-    rbf_d0 = _Euclidean_to_RBF(nbr_d0, l, single_cell)
-
-    # NOTE: add more info about cutoff, n_neighbors and n_nearest_neighbors
-    #if cutoff:
-        # not efficient
-        # rbf_d[rbf_d < cutoff] = 0
-        
-        # more efficient: 
-        # https://seanlaw.github.io/2019/02/27/set-values-in-sparse-matrix/
-    nonzero_mask = np.array(rbf_d[rbf_d.nonzero()] < cutoff)[0]
-    rows = rbf_d.nonzero()[0][nonzero_mask]
-    cols = rbf_d.nonzero()[1][nonzero_mask]
-    rbf_d[rows, cols] = 0
-
-    # elif n_neighbors:
-    #     nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(rbf_d)
-    #     knn = nbrs.kneighbors_graph(rbf_d).toarray()
-    #     rbf_d = rbf_d * knn
-
-    adata.obsp['weight'] = rbf_d * adata.shape[0] / rbf_d.sum()
-    adata.obsp['nearest_neighbors'] = rbf_d0 * adata.shape[0] / rbf_d0.sum()
+    adata.obsp['weight'] = spatial_W
+    adata.obsp['nearest_neighbors'] = KNN_connect
     return
 
 def extract_lr(adata, species, mean='algebra', min_cell=0, datahost='builtin'):
